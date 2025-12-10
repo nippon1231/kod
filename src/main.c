@@ -7,7 +7,7 @@
 #define MAX_BULLETS 5
 #define MAX_ENEMIES 10
 #define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 224
+#define SCREEN_HEIGHT 180
 #define GROUND_Y 180
 #define PLAYER_SPEED 2
 #define PLAYER_JUMP_POWER -12
@@ -21,6 +21,8 @@
 #define ENEMY_MAX_HP 50
 #define BULLET_DAMAGE 25
 #define ENEMY_DAMAGE 10
+// Nombre de frames entre chaque ajustement vertical du BG_A (plus grand = plus lent)
+#define BGA_SCROLL_FRAME_DELAY 8
 
 // Structure pour le joueur
 typedef struct {
@@ -38,6 +40,7 @@ typedef struct {
     s16 maxHp;
     u8 invincible;
     u8 invincibleTimer;
+    u8 blockHorizDuringJump; // flag: when jumping, block horizontal input if true
 } Player;
 
 // Structure pour les projectiles
@@ -92,6 +95,11 @@ typedef struct {
     s16 enemySpawnY[MAX_ENEMIES];  // Positions Y de spawn
     s16 bgaOffsetY; // Offset vertical BG_A pour ce niveau
     s16 bgbOffsetY; // Offset vertical BG_B pour ce niveau
+    s16 bgaMaxOffsetY; // Offset vertical maximum autorisé pour BG_A
+    u8 bgaScrollDelay; // Nombre de frames entre chaque ajustement vertical du BG_A
+    u8 bgbScrollDelay; // Nombre de frames entre chaque ajustement vertical du BG_B
+    u8 bgaScrollStep;  // Pixels à ajuster par pas pour BG_A (0 = disabled)
+    u8 bgbScrollStep;  // Pixels à ajuster par pas pour BG_B (0 = disabled)
 } Level;
 
 // Variables globales
@@ -135,6 +143,7 @@ void updateEnemies();
 void updateCamera();
 void shootBullet();
 u8 canMoveToPosition(s16 x, s16 y);
+void checkAdjacentSolids(s16 px, s16 py, u8* leftSolid, u8* rightSolid);
 void handleInput();
 void checkCollisions();
 void spawnEnemy(s16 x, s16 y);
@@ -192,8 +201,13 @@ void initLevels() {
     levels[0].mapHeight = 20;
     levels[0].bgaOffsetY = 0;
     levels[0].bgbOffsetY = 0;
+    levels[0].bgaMaxOffsetY = 0;
     levels[0].enemyCount = 8;
+    levels[0].bgaScrollDelay = 8;
+    levels[0].bgbScrollDelay = 8;
     levels[0].enemySpawnX[0] = 300;
+        levels[0].bgaScrollStep = 1;
+        levels[0].bgbScrollStep = 1;
     levels[0].enemySpawnY[0] = 0;
     levels[0].enemySpawnX[1] = 450;
     levels[0].enemySpawnY[1] = 0;
@@ -220,11 +234,16 @@ void initLevels() {
     levels[1].enemySprite = &sprite_soldier;
     levels[1].enemyPalette = &palette_soldier;
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 2
-    levels[1].mapWidth = 119;
-    levels[1].mapHeight = 63;
-    levels[1].bgaOffsetY = 90;
-    levels[1].bgbOffsetY = 90;
+    levels[1].mapWidth = 89;
+    levels[1].mapHeight = 70;
+    levels[1].bgaOffsetY = 56;
+    levels[1].bgbOffsetY = 70;
+    levels[1].bgaMaxOffsetY = 200;
     levels[1].enemyCount = 8;
+    levels[1].bgaScrollDelay = 5;
+    levels[1].bgbScrollDelay = 28;
+        levels[1].bgaScrollStep = 1;
+        levels[1].bgbScrollStep = 1;
     for(u8 i = 0; i < 8; i++) {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
@@ -243,6 +262,11 @@ void initLevels() {
     levels[2].mapWidth = 191;
     levels[2].mapHeight = 20;
     levels[2].enemyCount = 8;
+    levels[2].bgaMaxOffsetY = 0;
+    levels[2].bgaScrollDelay = 10;
+    levels[2].bgbScrollDelay = 10;
+        levels[2].bgaScrollStep = 1;
+        levels[2].bgbScrollStep = 1;
     for(u8 i = 0; i < 8; i++) {
         levels[2].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[2].enemySpawnY[i] = levels[0].enemySpawnY[i];
@@ -301,6 +325,7 @@ void initGame() {
     player.shootCooldown = 0;
     player.shootAnimTimer = 0;
     player.onGround = TRUE;
+    player.blockHorizDuringJump = FALSE;
     player.hp = PLAYER_MAX_HP;
     player.maxHp = PLAYER_MAX_HP;
     player.invincible = FALSE;
@@ -334,12 +359,30 @@ void handleInput() {
     u16 joy = JOY_readJoypad(JOY_1);
     
     player.velX = 0;
+    u8 jumpInitiated = FALSE;
     
     // Saut avec B - vérifier en premier avant tout autre déplacement
     if((joy & BUTTON_B) && player.onGround) {
         player.groundY = player.y;  // Sauvegarder la position Y actuelle avant le saut
         player.velY = PLAYER_JUMP_POWER;
         player.onGround = FALSE;
+        jumpInitiated = TRUE;
+
+        // If player is attempting to jump toward a direction (left/right),
+        // check the adjacent tile at foot level. If that tile is 0 (solid wall),
+        // block horizontal movement during this jump initiation.
+        u8 leftSolid = FALSE, rightSolid = FALSE;
+        checkAdjacentSolids(player.x, player.y, &leftSolid, &rightSolid);
+
+        // Block horizontal input while airborne if the player is adjacent to
+        // a solid tile in the direction they're facing or pressing.
+        if((leftSolid && (joy & BUTTON_LEFT)) || (leftSolid && !player.facingRight) ||
+           (rightSolid && (joy & BUTTON_RIGHT)) || (rightSolid && player.facingRight)) {
+            player.blockHorizDuringJump = TRUE;
+        } else {
+            player.blockHorizDuringJump = FALSE;
+        }
+        
         if(player.shootAnimTimer == 0) {
             SPR_setAnim(player.sprite, PLAYERANIM_JUMP);
         }
@@ -347,35 +390,29 @@ void handleInput() {
     
     // Déplacement horizontal
     if(joy & BUTTON_LEFT) {
-        player.velX = -PLAYER_SPEED;
-        player.facingRight = FALSE;
-        if(player.onGround && player.shootAnimTimer == 0) {
-            SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+        // If a jump was initiated into a wall (or we're mid-air with the flag),
+        // block horizontal movement while airborne.
+        if(!(player.blockHorizDuringJump && !player.onGround)) {
+            player.velX = -PLAYER_SPEED;
+            player.facingRight = FALSE;
+            if(player.onGround && player.shootAnimTimer == 0) {
+                SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+            }
         }
     }
     else if(joy & BUTTON_RIGHT) {
-        player.velX = PLAYER_SPEED;
-        player.facingRight = TRUE;
-        if(player.onGround && player.shootAnimTimer == 0) {
-            SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+        if(!(player.blockHorizDuringJump && !player.onGround)) {
+            player.velX = PLAYER_SPEED;
+            player.facingRight = TRUE;
+            if(player.onGround && player.shootAnimTimer == 0) {
+                SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+            }
         }
     }
     
     // Déplacement vertical avec haut/bas - seulement si au sol (pas en saut)
     u8 verticalMove = FALSE;
     if(player.onGround) {
-        // Scroll vertical BG_A avec C + haut/bas
-        if((joy & BUTTON_C) && (joy & BUTTON_UP)) {
-            levels[currentLevel].bgaOffsetY--;
-        } else if((joy & BUTTON_C) && (joy & BUTTON_DOWN)) {
-            levels[currentLevel].bgaOffsetY++;
-        }
-        // Scroll vertical BG_B avec X + haut/bas
-        if((joy & BUTTON_X) && (joy & BUTTON_UP)) {
-            levels[currentLevel].bgbOffsetY--;
-        } else if((joy & BUTTON_X) && (joy & BUTTON_DOWN)) {
-            levels[currentLevel].bgbOffsetY++;
-        }
         // Déplacement vertical du joueur classique
         if(joy & BUTTON_UP) {
             s16 newY = player.y - PLAYER_SPEED;
@@ -438,6 +475,7 @@ void updatePlayer() {
             player.onGround = TRUE;
             player.y = newY;
             player.groundY = newY;
+            player.blockHorizDuringJump = FALSE;
         }
         // Toujours appliquer le mouvement vertical
         else {
@@ -448,6 +486,7 @@ void updatePlayer() {
                 player.y = player.groundY;
                 player.onGround = TRUE;
                 player.velY = 0;
+                player.blockHorizDuringJump = FALSE;
             }
         }
         
@@ -473,6 +512,20 @@ void updatePlayer() {
             player.x = newX;
         }
     }
+
+    // Empêcher le joueur de sortir de la zone visible lorsque la caméra ne recule pas
+    // (la caméra n'est que monotone vers la droite). On clamp en coordonnées monde
+    // pour garder le joueur visible: [cameraX, cameraX + SCREEN_WIDTH - spriteWidth]
+    {
+        const s16 spriteWidth = 16;
+        s16 minVisibleX = cameraX;
+        s16 maxVisibleX = cameraX + SCREEN_WIDTH - spriteWidth;
+        if(player.x < minVisibleX) player.x = minVisibleX;
+        if(player.x > maxVisibleX) player.x = maxVisibleX;
+    }
+
+    // (BG_A vertical adjustment moved to updateCamera so it only
+    // happens when the camera actually moves forward)
     
     if(player.shootCooldown > 0) {
         player.shootCooldown--;
@@ -691,20 +744,83 @@ void updateEnemies() {
 void updateCamera() {
     // Caméra suit le joueur
     s16 targetCameraX = player.x - SCREEN_WIDTH / 2;
-    s16 targetCameraY = player.y - SCREEN_HEIGHT / 2;
 
     // Limites de la caméra horizontale
     if(targetCameraX < 0) targetCameraX = 0;
     if(targetCameraX > mapWidth - SCREEN_WIDTH) targetCameraX = mapWidth - SCREEN_WIDTH;
-    cameraX = targetCameraX;
+    // Ne pas reculer la caméra : n'accepter que les augmentations de targetCameraX
+    s16 prevCameraX = cameraX;
+    if(targetCameraX > cameraX) {
+        cameraX = targetCameraX;
+    }
 
-    // Limites de la caméra verticale
-    if(targetCameraY < 0) targetCameraY = 0;
-    if(targetCameraY > mapHeight - SCREEN_HEIGHT) targetCameraY = mapHeight - SCREEN_HEIGHT;
-    cameraY = targetCameraY;
+    // Désactiver le scroll vertical : garder la caméra verticale fixe
+    cameraY = 0;
+    bgbCameraY = 0;
 
     // Exemple: le plan B peut avoir un offset vertical différent (parallaxe)
     bgbCameraY = cameraY / 2;
+
+    // Ajuster le scroll vertical de BG_A uniquement si la caméra a avancé
+    // (scroll down only when camera moves forward)
+    {
+        static u8 bgaScrollCounter = 0;
+        Level* lvl = &levels[currentLevel];
+        // Calculer la limite maximale d'offset pour BG_A en pixels.
+        // On limite par la hauteur de la map (en tuiles * 8) moins la hauteur d'écran.
+        s16 maxAllowed = (s16)lvl->mapHeight * 8 - SCREEN_HEIGHT;
+        if(maxAllowed < 0) maxAllowed = 0;
+        // Si un `bgaMaxOffsetY` spécifique est fourni et plus petit, l'appliquer.
+        if(lvl->bgaMaxOffsetY > 0 && lvl->bgaMaxOffsetY < maxAllowed) {
+            maxAllowed = lvl->bgaMaxOffsetY;
+        }
+        if(cameraX > prevCameraX) {
+            bgaScrollCounter++;
+            u8 delay = (lvl->bgaScrollDelay > 0) ? lvl->bgaScrollDelay : BGA_SCROLL_FRAME_DELAY;
+            if(bgaScrollCounter >= delay) {
+                // inverted movement: on camera advance, move BGA in opposite direction
+                if(lvl->bgaScrollStep > 0) {
+                    s16 step = lvl->bgaScrollStep;
+                    if(lvl->bgaOffsetY > 0) {
+                        lvl->bgaOffsetY -= step;
+                        if(lvl->bgaOffsetY < 0) lvl->bgaOffsetY = 0;
+                        if(lvl->bgaOffsetY > maxAllowed) lvl->bgaOffsetY = maxAllowed;
+                    }
+                }
+                bgaScrollCounter = 0;
+            }
+        } else {
+            // reset counter when camera not advancing
+            bgaScrollCounter = 0;
+        }
+    }
+
+    // Ajuster le scroll vertical de BG_B de la même façon que BG_A (même delay)
+    {
+        static u8 bgbScrollCounter = 0;
+        Level* lvlb = &levels[currentLevel];
+        // calculer une limite raisonnable pour BG_B basée sur la hauteur de la map
+        s16 maxBgbAllowed = (s16)lvlb->mapHeight * 8 - SCREEN_HEIGHT;
+        if(maxBgbAllowed < 0) maxBgbAllowed = 0;
+        if(cameraX > prevCameraX) {
+            bgbScrollCounter++;
+            u8 delayb = (lvlb->bgbScrollDelay > 0) ? lvlb->bgbScrollDelay : BGA_SCROLL_FRAME_DELAY;
+            if(bgbScrollCounter >= delayb) {
+                // inverted movement: on camera advance, move BGB in opposite direction
+                if(lvlb->bgbScrollStep > 0) {
+                    s16 stepb = lvlb->bgbScrollStep;
+                    if(lvlb->bgbOffsetY > 0) {
+                        lvlb->bgbOffsetY -= stepb;
+                    }
+                    if(lvlb->bgbOffsetY < 0) lvlb->bgbOffsetY = 0;
+                    if(lvlb->bgbOffsetY > maxBgbAllowed) lvlb->bgbOffsetY = maxBgbAllowed;
+                }
+                bgbScrollCounter = 0;
+            }
+        } else {
+            bgbScrollCounter = 0;
+        }
+    }
 
     // Mettre à jour la position du sprite du joueur à l'écran
     SPR_setPosition(player.sprite, player.x - cameraX, player.y - cameraY);
@@ -730,6 +846,8 @@ void updateCamera() {
         }
     }
     // Scroll du background à la même vitesse que la caméra + offset par niveau
+    // Scroll du background à la même vitesse que la caméra + offset par niveau
+    // (l'offset vertical `bgaOffsetY` est géré depuis `updatePlayer()`)
     MAP_scrollTo(bgMap, cameraX, cameraY + levels[currentLevel].bgaOffsetY);
 
     // Scroll du plan B avec effet parallaxe + offset par niveau
@@ -828,7 +946,9 @@ void spawnEnemy(s16 x, s16 y) {
 u8 canMoveToPosition(s16 x, s16 y) {
     // Vérifier la collision au niveau des pieds du joueur (bas du sprite)
     // En supposant que le sprite fait environ 24 pixels de haut et 16 pixels de large
-    s16 feetY = y + 24;
+    // Prendre en compte l'offset vertical appliqué au BG_A pour l'affichage
+    // afin que la map de collision corresponde au rendu visuel.
+    s16 feetY = y + 24 + levels[currentLevel].bgaOffsetY;
     
     // Vérifier plusieurs points en largeur du sprite (gauche, centre, droite)
     s16 leftX = x;
@@ -871,6 +991,45 @@ u8 canMoveToPosition(s16 x, s16 y) {
     }
     
     return TRUE;
+}
+
+// Helper: check if tiles adjacent to player at feet and mid-height are solid (value 0)
+void checkAdjacentSolids(s16 px, s16 py, u8* leftSolid, u8* rightSolid) {
+    *leftSolid = FALSE;
+    *rightSolid = FALSE;
+    const u16* currentMap = levels[currentLevel].collisionMap;
+    u16 currentMapWidth = levels[currentLevel].mapWidth;
+    u16 currentMapHeight = levels[currentLevel].mapHeight;
+
+    s16 feetY = py + 24 + levels[currentLevel].bgaOffsetY;
+    s16 midY = py + 12 + levels[currentLevel].bgaOffsetY;
+    s16 tileFeetY = feetY / 8;
+    s16 tileMidY = midY / 8;
+
+    s16 leftTileX = (px - 1) / 8;
+    s16 rightTileX = (px + 16) / 8;
+
+    if(leftTileX >= 0 && leftTileX < currentMapWidth) {
+        if(tileFeetY >= 0 && tileFeetY < currentMapHeight) {
+            u16 idx = tileFeetY * currentMapWidth + leftTileX;
+            if(currentMap[idx] == 0) *leftSolid = TRUE;
+        }
+        if(!*leftSolid && tileMidY >= 0 && tileMidY < currentMapHeight) {
+            u16 idx = tileMidY * currentMapWidth + leftTileX;
+            if(currentMap[idx] == 0) *leftSolid = TRUE;
+        }
+    }
+
+    if(rightTileX >= 0 && rightTileX < currentMapWidth) {
+        if(tileFeetY >= 0 && tileFeetY < currentMapHeight) {
+            u16 idx = tileFeetY * currentMapWidth + rightTileX;
+            if(currentMap[idx] == 0) *rightSolid = TRUE;
+        }
+        if(!*rightSolid && tileMidY >= 0 && tileMidY < currentMapHeight) {
+            u16 idx = tileMidY * currentMapWidth + rightTileX;
+            if(currentMap[idx] == 0) *rightSolid = TRUE;
+        }
+    }
 }
 
 void drawHUD() {
