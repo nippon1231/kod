@@ -3,7 +3,6 @@
 #include "player.h"
 #include "soldier.h"
 #include "lvl1.h"
-#include "level.h"
 // Constantes
 #define MAX_BULLETS 5
 #define MAX_ENEMIES 10
@@ -11,7 +10,7 @@
 #define SCREEN_HEIGHT 224
 #define GROUND_Y 180
 #define PLAYER_SPEED 2
-#define PLAYER_JUMP_POWER -15
+#define PLAYER_JUMP_POWER -12
 #define GRAVITY 1
 #define BULLET_SPEED 4
 #define BULLET_MAX_DISTANCE 180
@@ -58,6 +57,8 @@ typedef struct {
     Sprite* sprite;
     s16 x;
     s16 y;
+    s16 velY;
+    u8 onGround;
     u8 active;
     u8 facingRight;
     u8 attacking;
@@ -73,12 +74,30 @@ typedef struct {
     s16 maxHp;
 } Enemy;
 
+// Structure pour un niveau
+typedef struct {
+    const MapDefinition* bga;   // Background A
+    const MapDefinition* bgb;   // Background B
+    const TileSet* bgaTileset;  // Tileset BG A
+    const TileSet* bgbTileset;  // Tileset BG B
+    const Palette* bgaPalette;  // Palette BG A
+    const Palette* bgbPalette;  // Palette BG B
+    const SpriteDefinition* enemySprite;  // Sprite des ennemis
+    const Palette* enemyPalette;  // Palette des ennemis
+    const u16* collisionMap;    // Map de collision du niveau
+    u16 mapWidth;               // Largeur de la map en tuiles
+    u16 mapHeight;              // Hauteur de la map en tuiles
+    u8 enemyCount;            // Nombre d'ennemis
+    s16 enemySpawnX[MAX_ENEMIES];  // Positions X de spawn
+    s16 enemySpawnY[MAX_ENEMIES];  // Positions Y de spawn
+} Level;
+
 // Variables globales
 Player player;
 Bullet bullets[MAX_BULLETS];
 Enemy enemies[MAX_ENEMIES];
 s16 cameraX = 0;
-u16 mapWidth = MAP_WIDTH * 8; // Largeur en pixels (192 tiles * 8)
+u16 mapWidth = 0; // Will be initialized in loadLevel()
 s16 lastHitEnemyIndex = -1;
 u8 lastHitEnemyDisplayTimer = 0;
 
@@ -88,16 +107,24 @@ u8 lastEnemyCount = 255;
 s16 lastDisplayedEnemyHP = -1;
 u16 VDPTilesFilled = TILE_USER_INDEX;
 
-// Variable externe pour la map
-extern Map* bgMap;
+// Variables pour les maps de background
+Map* bgMap = NULL;
+Map* bgbMap = NULL;
+
+// Gestion des niveaux
+u8 currentLevel = 0;
+Level levels[3];  // 3 niveaux pour l'exemple
 
 // Prototypes
+void initLevels();
+void loadLevel(u8 levelIndex);
 void initGame();
 void updatePlayer();
 void updateBullets();
 void updateEnemies();
 void updateCamera();
 void shootBullet();
+u8 canMoveToPosition(s16 x, s16 y);
 void handleInput();
 void checkCollisions();
 void spawnEnemy(s16 x, s16 y);
@@ -107,9 +134,6 @@ int main() {
 
     VDP_setWindowVPos(TRUE, 22);
     VDP_setTextPlane(WINDOW);
-    //VDP_drawText("===============================", 0, 24);
-    //VDP_drawText("SCORE: 00000    VIES: 3", 2, 25);   
-    // Initialisation de base
     VDP_setScreenWidth320();
     VDP_setScreenHeight224();
     SPR_init();
@@ -121,7 +145,8 @@ int main() {
     // Définir la couleur de fond (backdrop) en bleu
     VDP_setBackgroundColor(16); // Index 16 de la palette (bleu dans la palette par défaut)
     
-    initlevel();
+    initLevels();
+    loadLevel(1);  // Charger le niveau 1
     
     initGame();
     
@@ -142,12 +167,119 @@ int main() {
     return 0;
 }
 
+void initLevels() {
+    // Niveau 1
+    levels[0].bga = &bga_map;
+    levels[0].bgb = &bgb_map;
+    levels[0].bgaTileset = &bga_tileset;
+    levels[0].bgbTileset = &bgb_tileset;
+    levels[0].bgaPalette = &palette_lvl;
+    levels[0].bgbPalette = &palette_lvlbg;
+    levels[0].enemySprite = &sprite_soldier;
+    levels[0].enemyPalette = &palette_soldier;
+    levels[0].collisionMap = levelMap;  // Map de collision du niveau 1
+    levels[0].mapWidth = 191;
+    levels[0].mapHeight = 20;
+    levels[0].enemyCount = 8;
+    levels[0].enemySpawnX[0] = 300;
+    levels[0].enemySpawnY[0] = 0;
+    levels[0].enemySpawnX[1] = 450;
+    levels[0].enemySpawnY[1] = 0;
+    levels[0].enemySpawnX[2] = 600;
+    levels[0].enemySpawnY[2] = 0;
+    levels[0].enemySpawnX[3] = 800;
+    levels[0].enemySpawnY[3] = 0;
+    levels[0].enemySpawnX[4] = 950;
+    levels[0].enemySpawnY[4] = 0;
+    levels[0].enemySpawnX[5] = 1100;
+    levels[0].enemySpawnY[5] = 0;
+    levels[0].enemySpawnX[6] = 700;
+    levels[0].enemySpawnY[6] = 0;
+    levels[0].enemySpawnX[7] = 1000;
+    levels[0].enemySpawnY[7] = 0;
+    
+    // Niveau 2 (exemple - même configuration pour l'instant)
+    levels[1].bga = &lvl3bga_map;
+    levels[1].bgb = &lvl3bgb_map;
+    levels[1].bgaTileset = &lvl3bga_tileset;
+    levels[1].bgbTileset = &lvl3bgb_tileset;
+    levels[1].bgaPalette = &lvl3bga_pal;
+    levels[1].bgbPalette = &lvl3bgb_pal ;
+    levels[1].enemySprite = &sprite_soldier;
+    levels[1].enemyPalette = &palette_soldier;
+    levels[1].collisionMap = levelMap2;  // Map de collision du niveau 2
+    levels[1].mapWidth = 191;
+    levels[1].mapHeight = 20;
+    levels[1].enemyCount = 8;
+    for(u8 i = 0; i < 8; i++) {
+        levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
+        levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
+    }
+    
+    // Niveau 3 (exemple - même configuration pour l'instant)
+    levels[2].bga = &bga_map;
+    levels[2].bgb = &bgb_map;
+    levels[2].bgaTileset = &bga_tileset;
+    levels[2].bgbTileset = &bgb_tileset;
+    levels[2].bgaPalette = &palette_lvl;
+    levels[2].bgbPalette = &palette_lvlbg;
+    levels[2].enemySprite = &sprite_soldier;
+    levels[2].enemyPalette = &palette_soldier;
+    levels[2].collisionMap = levelMap3;  // Map de collision du niveau 3
+    levels[2].mapWidth = 191;
+    levels[2].mapHeight = 20;
+    levels[2].enemyCount = 8;
+    for(u8 i = 0; i < 8; i++) {
+        levels[2].enemySpawnX[i] = levels[0].enemySpawnX[i];
+        levels[2].enemySpawnY[i] = levels[0].enemySpawnY[i];
+    }
+}
+
+void loadLevel(u8 levelIndex) {
+    if(levelIndex >= 3) return;  // Sécurité
+    
+    currentLevel = levelIndex;
+    Level* level = &levels[levelIndex];
+    
+    // Libérer les anciennes maps si elles existent
+    if(bgMap != NULL) {
+        MAP_release(bgMap);
+        bgMap = NULL;
+    }
+    if(bgbMap != NULL) {
+        MAP_release(bgbMap);
+        bgbMap = NULL;
+    }
+    
+    // Charger les palettes
+    PAL_setPalette(PAL0, level->bgaPalette->data, CPU);
+    PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
+    PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
+    
+    // Charger le tileset pour le plan B (background parallaxe) en premier
+    VDP_loadTileSet(level->bgbTileset, TILE_USER_INDEX, DMA);
+    
+    // Créer et afficher la map sur le plan B (arrière-plan)
+    bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, TILE_USER_INDEX));
+    
+    // Charger le tileset pour le plan A (foreground)
+    u16 bgaTileIndex = TILE_USER_INDEX + level->bgbTileset->numTile;
+    VDP_loadTileSet(level->bgaTileset, bgaTileIndex, DMA);
+    
+    // Créer et afficher la map sur le plan A
+    bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, bgaTileIndex));
+    
+    // Mettre à jour la largeur de la map en pixels
+    mapWidth = level->mapWidth * 8;
+}
+
 void initGame() {
-    // Initialiser le joueur
-    player.sprite = SPR_addSprite(&sprite_player, 80, GROUND_Y, TILE_ATTR(PAL1, 0, FALSE, FALSE));
+    // Initialiser le joueur dans une zone autorisée (tuiles avec valeur 1)
+    // Y = 120 + 24 pixels (pieds) = 144 / 8 = tuile 18, qui est dans la zone marchable
+    player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR(PAL1, 0, FALSE, FALSE));
     player.x = 80;
-    player.y = GROUND_Y;
-    player.groundY = GROUND_Y;
+    player.y = 70;
+    player.groundY = 120;
     player.velX = 0;
     player.velY = 0;
     player.facingRight = TRUE;
@@ -170,28 +302,33 @@ void initGame() {
     }
     
     // Initialiser les ennemis
+    Level* level = &levels[currentLevel];
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         enemies[i].active = FALSE;
-        enemies[i].sprite = SPR_addSprite(&sprite_soldier, -32, -32, TILE_ATTR(PAL2, 0, FALSE, FALSE));
+        enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR(PAL2, 0, FALSE, FALSE));
         SPR_setVisibility(enemies[i].sprite, HIDDEN);
     }
     
-    // Spawner quelques ennemis
-    spawnEnemy(300, GROUND_Y);
-    spawnEnemy(450, GROUND_Y);
-    spawnEnemy(600, GROUND_Y);
-    spawnEnemy(800, GROUND_Y);
-    spawnEnemy(950, GROUND_Y);
-    spawnEnemy(1100, GROUND_Y);
-    spawnEnemy(700, GROUND_Y - 40);
-    spawnEnemy(1000, GROUND_Y - 40);
+    // Spawner les ennemis du niveau actuel
+    for(u8 i = 0; i < level->enemyCount && i < MAX_ENEMIES; i++) {
+        spawnEnemy(level->enemySpawnX[i], level->enemySpawnY[i]);
+    }
 }
 
 void handleInput() {
     u16 joy = JOY_readJoypad(JOY_1);
     
     player.velX = 0;
-    s16 manualVelY = 0;
+    
+    // Saut avec B - vérifier en premier avant tout autre déplacement
+    if((joy & BUTTON_B) && player.onGround) {
+        player.groundY = player.y;  // Sauvegarder la position Y actuelle avant le saut
+        player.velY = PLAYER_JUMP_POWER;
+        player.onGround = FALSE;
+        if(player.shootAnimTimer == 0) {
+            SPR_setAnim(player.sprite, PLAYERANIM_JUMP);
+        }
+    }
     
     // Déplacement horizontal
     if(joy & BUTTON_LEFT) {
@@ -209,35 +346,44 @@ void handleInput() {
         }
     }
     
-    // Déplacement vertical avec haut/bas
-    if(joy & BUTTON_UP) {
-        manualVelY = -PLAYER_SPEED;
-        if(player.onGround && player.shootAnimTimer == 0) {
-            SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+    // Déplacement vertical avec haut/bas - seulement si au sol (pas en saut)
+    u8 verticalMove = FALSE;
+    if(player.onGround) {
+        if(joy & BUTTON_UP) {
+            s16 newY = player.y - PLAYER_SPEED;
+            if(newY < 0) newY = 0;
+            
+            // Vérifier la collision avec le levelMap
+            if(canMoveToPosition(player.x, newY)) {
+                player.y = newY;
+                verticalMove = TRUE;
+                if(player.shootAnimTimer == 0) {
+                    SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+                }
+            }
         }
-    }
-    else if(joy & BUTTON_DOWN) {
-        manualVelY = PLAYER_SPEED;
-        if(player.onGround && player.shootAnimTimer == 0) {
-            SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+        else if(joy & BUTTON_DOWN) {
+            s16 newY = player.y + PLAYER_SPEED;
+            if(newY > GROUND_Y) newY = GROUND_Y;
+            
+            // Empêcher le joueur de descendre en dessous de la ligne 20
+            if(newY + 24 > 160) newY = 160 - 24;
+            
+            // Vérifier la collision avec le levelMap
+            if(canMoveToPosition(player.x, newY)) {
+                player.y = newY;
+                verticalMove = TRUE;
+                if(player.shootAnimTimer == 0) {
+                    SPR_setAnim(player.sprite, PLAYERANIM_WALK);
+                }
+            }
         }
     }
     
     // Si aucun mouvement, idle
-    if(player.velX == 0 && manualVelY == 0) {
+    if(player.velX == 0 && !verticalMove) {
         if(player.onGround && player.shootAnimTimer == 0) {
             SPR_setAnim(player.sprite, PLAYERANIM_IDLE);
-        }
-    }
-    
-    // Appliquer le déplacement vertical manuel
-    if(manualVelY != 0) {
-        player.y += manualVelY;
-        if(player.y < 0) player.y = 0;
-        if(player.y > GROUND_Y) player.y = GROUND_Y;
-        // Mettre à jour la position Y de référence
-        if(player.onGround) {
-            player.groundY = player.y;
         }
     }
     
@@ -251,41 +397,55 @@ void handleInput() {
         }
     }
     
-    // Saut avec B
-    if((joy & BUTTON_B) && player.onGround) {
-        player.velY = PLAYER_JUMP_POWER;
-        player.onGround = FALSE;
-        if(player.shootAnimTimer == 0) {
-            SPR_setAnim(player.sprite, PLAYERANIM_JUMP);
-        }
-    }
-    
     SPR_setHFlip(player.sprite, !player.facingRight);
 }
 
 void updatePlayer() {
-    // Déplacement horizontal
-    player.x += player.velX;
-    
-    // Limites de déplacement horizontal
-    if(player.x < 0) player.x = 0;
-    if(player.x > mapWidth - 16) player.x = mapWidth - 16;
-    
-    // Gravité et saut
+    // Gravité et saut en premier
     if(!player.onGround) {
         player.velY += GRAVITY;
-        player.y += player.velY;
+        s16 newY = player.y + player.velY;
         
-        // Collision avec le sol (retour à la position Y d'origine)
-        if(player.y >= player.groundY) {
-            player.y = player.groundY;
+        // Empêcher de descendre en dessous de la ligne 20
+        if(newY + 24 > 160) {
+            newY = 160 - 24;
             player.velY = 0;
             player.onGround = TRUE;
+            player.y = newY;
+            player.groundY = newY;
+        }
+        // Toujours appliquer le mouvement vertical
+        else {
+            player.y = newY;
+            
+            // Si on tombe (velY >= 0), vérifier si on a atteint ou dépassé la position au sol
+            if(player.velY >= 0 && player.y >= player.groundY) {
+                player.y = player.groundY;
+                player.onGround = TRUE;
+                player.velY = 0;
+            }
         }
         
         // Animation de chute
         if(player.velY > 0 && player.shootAnimTimer == 0) {
             SPR_setAnim(player.sprite, PLAYERANIM_FALL);
+        }
+    }
+    
+    // Déplacement horizontal avec collision
+    if(player.velX != 0) {
+        s16 newX = player.x + player.velX;
+        
+        // Limites de déplacement horizontal
+        if(newX < 0) newX = 0;
+        if(newX > mapWidth - 16) newX = mapWidth - 16;
+        
+        // Vérifier la collision avec le levelMap seulement si au sol
+        // En l'air, on peut se déplacer librement horizontalement
+        if(!player.onGround) {
+            player.x = newX;
+        } else if(canMoveToPosition(newX, player.y)) {
+            player.x = newX;
         }
     }
     
@@ -384,6 +544,23 @@ void updateEnemies() {
                     SPR_setVisibility(enemies[i].sprite, HIDDEN);
                 }
                 continue;
+            }
+            
+            // Appliquer la gravité si l'ennemi n'est pas au sol
+            if(!enemies[i].onGround) {
+                enemies[i].velY += GRAVITY;
+                enemies[i].y += enemies[i].velY;
+                
+                // Vérifier si l'ennemi atteint une zone marchable (tile 1)
+                if(canMoveToPosition(enemies[i].x, enemies[i].y)) {
+                    enemies[i].onGround = TRUE;
+                    enemies[i].velY = 0;
+                } else if(enemies[i].y + 24 > 160) {
+                    // Limite de la ligne 20
+                    enemies[i].y = 136;
+                    enemies[i].onGround = TRUE;
+                    enemies[i].velY = 0;
+                }
             }
             
             s16 distX = player.x - enemies[i].x;
@@ -592,6 +769,8 @@ void spawnEnemy(s16 x, s16 y) {
             enemies[i].active = TRUE;
             enemies[i].x = x;
             enemies[i].y = y;
+            enemies[i].velY = 0;
+            enemies[i].onGround = FALSE;
             enemies[i].facingRight = FALSE;
             enemies[i].attacking = FALSE;
             enemies[i].attackCooldown = 0;
@@ -608,6 +787,56 @@ void spawnEnemy(s16 x, s16 y) {
             break;
         }
     }
+}
+
+// Fonction pour vérifier si le joueur peut se déplacer à une position donnée
+// Retourne TRUE si la tuile à cette position est une tuile marchable (valeur 1)
+u8 canMoveToPosition(s16 x, s16 y) {
+    // Vérifier la collision au niveau des pieds du joueur (bas du sprite)
+    // En supposant que le sprite fait environ 24 pixels de haut et 16 pixels de large
+    s16 feetY = y + 24;
+    
+    // Vérifier plusieurs points en largeur du sprite (gauche, centre, droite)
+    s16 leftX = x;
+    s16 centerX = x + 8;
+    s16 rightX = x + 15;
+    
+    // Convertir les coordonnées pixel en coordonnées de tuile pour chaque point
+    s16 tileFeetY = feetY / 8;
+    
+    // Utiliser la collision map du niveau actuel
+    const u16* currentMap = levels[currentLevel].collisionMap;
+    u16 currentMapWidth = levels[currentLevel].mapWidth;
+    u16 currentMapHeight = levels[currentLevel].mapHeight;
+    
+    // Vérifier le point gauche
+    s16 tileLeftX = leftX / 8;
+    if(tileLeftX >= 0 && tileLeftX < currentMapWidth && tileFeetY >= 0 && tileFeetY < currentMapHeight) {
+        u16 index = tileFeetY * currentMapWidth + tileLeftX;
+        if(currentMap[index] != 1) return FALSE;
+    } else {
+        return FALSE;
+    }
+    
+    // Vérifier le point centre
+    s16 tileCenterX = centerX / 8;
+    if(tileCenterX >= 0 && tileCenterX < currentMapWidth && tileFeetY >= 0 && tileFeetY < currentMapHeight) {
+        u16 index = tileFeetY * currentMapWidth + tileCenterX;
+        if(currentMap[index] != 1) return FALSE;
+    } else {
+        return FALSE;
+    }
+    
+    // Vérifier le point droite
+    s16 tileRightX = rightX / 8;
+    if(tileRightX >= 0 && tileRightX < currentMapWidth && tileFeetY >= 0 && tileFeetY < currentMapHeight) {
+        u16 index = tileFeetY * currentMapWidth + tileRightX;
+        if(currentMap[index] != 1) return FALSE;
+    } else {
+        return FALSE;
+    }
+    
+    return TRUE;
 }
 
 void drawHUD() {
