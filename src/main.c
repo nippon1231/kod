@@ -259,7 +259,7 @@ void initLevels() {
     levels[2].enemySprite = &sprite_soldier;
     levels[2].enemyPalette = &palette_soldier;
     levels[2].collisionMap = levelMap3;  // Map de collision du niveau 3
-    levels[2].mapWidth = 191;
+    levels[2].mapWidth = 102;
     levels[2].mapHeight = 20;
     levels[2].enemyCount = 8;
     levels[2].bgaMaxOffsetY = 0;

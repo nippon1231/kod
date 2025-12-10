@@ -12,9 +12,9 @@ TILESET bgb_tileset "gfx/lvl1_bgb.png" BEST ALL
 MAP bgb_map "gfx/lvl1_bgb.png" bgb_tileset BEST   ALL
 PALETTE palette_lvlbg "gfx/lvl1_bgb.png"
 
-TILESET lvl3bga_tileset "gfx/lvl3-1.png" BEST ALL
-MAP lvl3bga_map "gfx/lvl3-1.png" lvl3bga_tileset BEST   ALL
-PALETTE lvl3bga_pal "gfx/lvl3-1.png"
-TILESET lvl3bgb_tileset "gfx/lvl3-1_bgb.png" BEST ALL
-MAP lvl3bgb_map "gfx/lvl3-1_bgb.png" lvl3bgb_tileset BEST   ALL
-PALETTE lvl3bgb_pal "gfx/lvl3-1_bgb.png"
+TILESET lvl3bga_tileset "gfx/lvl3-2.png" BEST ALL
+MAP lvl3bga_map "gfx/lvl3-2.png" lvl3bga_tileset BEST   ALL
+PALETTE lvl3bga_pal "gfx/lvl3-2.png"
+TILESET lvl3bgb_tileset "gfx/lvl3-2_bgb.png" BEST ALL
+MAP lvl3bgb_map "gfx/lvl3-2_bgb.png" lvl3bgb_tileset BEST   ALL
+PALETTE lvl3bgb_pal "gfx/lvl3-2_bgb.png"
