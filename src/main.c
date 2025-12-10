@@ -105,6 +105,10 @@ void drawHUD();
 
 int main() {
 
+    VDP_setWindowVPos(TRUE, 22);
+    VDP_setTextPlane(WINDOW);
+    //VDP_drawText("===============================", 0, 24);
+    //VDP_drawText("SCORE: 00000    VIES: 3", 2, 25);   
     // Initialisation de base
     VDP_setScreenWidth320();
     VDP_setScreenHeight224();
@@ -129,6 +133,7 @@ int main() {
         updateEnemies();
         updateCamera();
         checkCollisions();
+        drawHUD();
         
         SPR_update();
         SYS_doVBlankProcess();
@@ -603,41 +608,28 @@ void spawnEnemy(s16 x, s16 y) {
 }
 
 void drawHUD() {
-    static u8 hudInitialized = FALSE;
     char text[32];
-    
-    // Calculer la position du HUD en fonction du scroll de la caméra
-    // Pour que le HUD reste fixe à l'écran
-    u16 hudTileX = (cameraX / 8);
-    
-    // Initialiser le fond du HUD (à chaque frame pour suivre le scroll)
-    // Remplir le fond du HUD sur le plan A
-    for(u8 y = 22; y < 28; y++) {
-        for(u8 x = 0; x < 40; x++) {
-            VDP_setTileMapXY(BG_A, TILE_ATTR_FULL(PAL0, 1, FALSE, FALSE, 0), hudTileX + x, y);
-        }
-    }
-    
-    // Afficher les HP du joueur (seulement si changés ou si caméra a bougé)
-    static s16 lastCameraX = -1;
-    if(player.hp != lastPlayerHP || cameraX != lastCameraX) {
+        VDP_setTextPlane(WINDOW);
+      //  VDP_drawText("===============================", 0, 24);
+      //VDP_drawText("SCORE: 00000    VIES: 3", 2, 25);   
+    // Afficher les HP du joueur (seulement si changés)
+    if(player.hp != lastPlayerHP) {
         lastPlayerHP = player.hp;
-        lastCameraX = cameraX;
         sprintf(text, "HP: %d/%d", player.hp, player.maxHp);
-        VDP_clearTextBG(BG_A, hudTileX + 1, 22, 15);
-        VDP_drawTextBG(BG_A, text, hudTileX + 1, 22);
+        VDP_clearText(1, 22, 15);
+        VDP_drawText(text, 1, 22);
         
         // Afficher une barre de vie graphique
         u8 barLength = (player.hp * 18) / player.maxHp;
-        VDP_drawTextBG(BG_A, "[", hudTileX + 1, 23);
+        VDP_drawText("[", 1, 23);
         for(u8 i = 0; i < 18; i++) {
             if(i < barLength) {
-                VDP_drawTextBG(BG_A, "=", hudTileX + 2 + i, 23);
+                VDP_drawText("=", 2 + i, 23);
             } else {
-                VDP_drawTextBG(BG_A, "-", hudTileX + 2 + i, 23);
+                VDP_drawText("-", 2 + i, 23);
             }
         }
-        VDP_drawTextBG(BG_A, "]", hudTileX + 20, 23);
+        VDP_drawText("]", 20, 23);
     }
     
     // Compter les ennemis actifs
@@ -648,12 +640,12 @@ void drawHUD() {
         }
     }
     
-    // Afficher le nombre d'ennemis (seulement si changé ou si caméra a bougé)
-    if(enemyCount != lastEnemyCount || cameraX != lastCameraX) {
+    // Afficher le nombre d'ennemis (seulement si changé)
+    if(enemyCount != lastEnemyCount) {
         lastEnemyCount = enemyCount;
         sprintf(text, "Enemies: %d", enemyCount);
-        VDP_clearTextBG(BG_A, hudTileX + 23, 22, 15);
-        VDP_drawTextBG(BG_A, text, hudTileX + 23, 22);
+        VDP_clearText(23, 22, 15);
+        VDP_drawText(text, 23, 22);
     }
     
     // Afficher les HP de l'ennemi touché (seulement si changé)
@@ -666,12 +658,12 @@ void drawHUD() {
         }
     }
     
-    if(currentEnemyHP != lastDisplayedEnemyHP || cameraX != lastCameraX) {
+    if(currentEnemyHP != lastDisplayedEnemyHP) {
         lastDisplayedEnemyHP = currentEnemyHP;
-        VDP_clearTextBG(BG_A, hudTileX + 23, 23, 15);
+        VDP_clearText(23, 3, 15);
         if(currentEnemyHP >= 0) {
             sprintf(text, "Enemy HP: %d", currentEnemyHP);
-            VDP_drawTextBG(BG_A, text, hudTileX + 23, 23);
+            VDP_drawText(text, 23, 23);
         }
     }
 }
