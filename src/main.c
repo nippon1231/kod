@@ -6,7 +6,7 @@
 #include "level.h"
 // Constantes
 #define MAX_BULLETS 5
-#define MAX_ENEMIES 8
+#define MAX_ENEMIES 10
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 224
 #define GROUND_Y 180
@@ -182,6 +182,9 @@ void initGame() {
     spawnEnemy(600, GROUND_Y);
     spawnEnemy(800, GROUND_Y);
     spawnEnemy(950, GROUND_Y);
+    spawnEnemy(1100, GROUND_Y);
+    spawnEnemy(700, GROUND_Y - 40);
+    spawnEnemy(1000, GROUND_Y - 40);
 }
 
 void handleInput() {
