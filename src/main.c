@@ -90,6 +90,8 @@ typedef struct {
     u8 enemyCount;            // Nombre d'ennemis
     s16 enemySpawnX[MAX_ENEMIES];  // Positions X de spawn
     s16 enemySpawnY[MAX_ENEMIES];  // Positions Y de spawn
+    s16 bgaOffsetY; // Offset vertical BG_A pour ce niveau
+    s16 bgbOffsetY; // Offset vertical BG_B pour ce niveau
 } Level;
 
 // Variables globales
@@ -98,6 +100,7 @@ Bullet bullets[MAX_BULLETS];
 Enemy enemies[MAX_ENEMIES];
 s16 cameraX = 0;
 u16 mapWidth = 0; // Will be initialized in loadLevel()
+s16 mapHeight = 0; // Hauteur de la map en pixels, initialisée dans loadLevel()
 s16 lastHitEnemyIndex = -1;
 u8 lastHitEnemyDisplayTimer = 0;
 
@@ -110,6 +113,13 @@ u16 VDPTilesFilled = TILE_USER_INDEX;
 // Variables pour les maps de background
 Map* bgMap = NULL;
 Map* bgbMap = NULL;
+
+// Ajout des offsets verticaux pour les backgrounds
+u16 cameraY = 0;      // Offset vertical principal (BG_A)
+u16 bgbCameraY = 0;   // Offset vertical pour BG_B
+
+// Offsets manuels pour BG_A et BG_B
+// Les offsets sont maintenant par niveau (dans Level)
 
 // Gestion des niveaux
 u8 currentLevel = 0;
@@ -180,6 +190,8 @@ void initLevels() {
     levels[0].collisionMap = levelMap;  // Map de collision du niveau 1
     levels[0].mapWidth = 191;
     levels[0].mapHeight = 20;
+    levels[0].bgaOffsetY = 0;
+    levels[0].bgbOffsetY = 0;
     levels[0].enemyCount = 8;
     levels[0].enemySpawnX[0] = 300;
     levels[0].enemySpawnY[0] = 0;
@@ -208,8 +220,10 @@ void initLevels() {
     levels[1].enemySprite = &sprite_soldier;
     levels[1].enemyPalette = &palette_soldier;
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 2
-    levels[1].mapWidth = 191;
-    levels[1].mapHeight = 20;
+    levels[1].mapWidth = 119;
+    levels[1].mapHeight = 63;
+    levels[1].bgaOffsetY = 90;
+    levels[1].bgbOffsetY = 90;
     levels[1].enemyCount = 8;
     for(u8 i = 0; i < 8; i++) {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
@@ -271,6 +285,7 @@ void loadLevel(u8 levelIndex) {
     
     // Mettre à jour la largeur de la map en pixels
     mapWidth = level->mapWidth * 8;
+    mapHeight = level->mapHeight * 8;
 }
 
 void initGame() {
@@ -349,10 +364,22 @@ void handleInput() {
     // Déplacement vertical avec haut/bas - seulement si au sol (pas en saut)
     u8 verticalMove = FALSE;
     if(player.onGround) {
+        // Scroll vertical BG_A avec C + haut/bas
+        if((joy & BUTTON_C) && (joy & BUTTON_UP)) {
+            levels[currentLevel].bgaOffsetY--;
+        } else if((joy & BUTTON_C) && (joy & BUTTON_DOWN)) {
+            levels[currentLevel].bgaOffsetY++;
+        }
+        // Scroll vertical BG_B avec X + haut/bas
+        if((joy & BUTTON_X) && (joy & BUTTON_UP)) {
+            levels[currentLevel].bgbOffsetY--;
+        } else if((joy & BUTTON_X) && (joy & BUTTON_DOWN)) {
+            levels[currentLevel].bgbOffsetY++;
+        }
+        // Déplacement vertical du joueur classique
         if(joy & BUTTON_UP) {
             s16 newY = player.y - PLAYER_SPEED;
             if(newY < 0) newY = 0;
-            
             // Vérifier la collision avec le levelMap
             if(canMoveToPosition(player.x, newY)) {
                 player.y = newY;
@@ -365,10 +392,8 @@ void handleInput() {
         else if(joy & BUTTON_DOWN) {
             s16 newY = player.y + PLAYER_SPEED;
             if(newY > GROUND_Y) newY = GROUND_Y;
-            
             // Empêcher le joueur de descendre en dessous de la ligne 20
             if(newY + 24 > 160) newY = 160 - 24;
-            
             // Vérifier la collision avec le levelMap
             if(canMoveToPosition(player.x, newY)) {
                 player.y = newY;
@@ -666,41 +691,50 @@ void updateEnemies() {
 void updateCamera() {
     // Caméra suit le joueur
     s16 targetCameraX = player.x - SCREEN_WIDTH / 2;
-    
-    // Limites de la caméra
+    s16 targetCameraY = player.y - SCREEN_HEIGHT / 2;
+
+    // Limites de la caméra horizontale
     if(targetCameraX < 0) targetCameraX = 0;
     if(targetCameraX > mapWidth - SCREEN_WIDTH) targetCameraX = mapWidth - SCREEN_WIDTH;
-    
     cameraX = targetCameraX;
-    
+
+    // Limites de la caméra verticale
+    if(targetCameraY < 0) targetCameraY = 0;
+    if(targetCameraY > mapHeight - SCREEN_HEIGHT) targetCameraY = mapHeight - SCREEN_HEIGHT;
+    cameraY = targetCameraY;
+
+    // Exemple: le plan B peut avoir un offset vertical différent (parallaxe)
+    bgbCameraY = cameraY / 2;
+
     // Mettre à jour la position du sprite du joueur à l'écran
-    SPR_setPosition(player.sprite, player.x - cameraX, player.y);
-    
+    SPR_setPosition(player.sprite, player.x - cameraX, player.y - cameraY);
+
     // Mettre à jour les projectiles
     for(u8 i = 0; i < MAX_BULLETS; i++) {
         if(bullets[i].active) {
-            SPR_setPosition(bullets[i].sprite, bullets[i].x - cameraX, bullets[i].y);
+            SPR_setPosition(bullets[i].sprite, bullets[i].x - cameraX, bullets[i].y - cameraY);
         }
     }
-    
+
     // Mettre à jour les ennemis
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         if(enemies[i].active) {
             s16 screenX = enemies[i].x - cameraX;
-            if(screenX > -32 && screenX < SCREEN_WIDTH + 32) {
-                SPR_setPosition(enemies[i].sprite, screenX, enemies[i].y);
+            s16 screenY = enemies[i].y - cameraY;
+            if(screenX > -32 && screenX < SCREEN_WIDTH + 32 && screenY > -32 && screenY < SCREEN_HEIGHT + 32) {
+                SPR_setPosition(enemies[i].sprite, screenX, screenY);
                 SPR_setVisibility(enemies[i].sprite, VISIBLE);
             } else {
                 SPR_setVisibility(enemies[i].sprite, HIDDEN);
             }
         }
     }
-    // Scroll du background à la même vitesse que la caméra
-    MAP_scrollTo(bgMap, cameraX, 0);
-    
-    // Scroll du plan B avec effet parallaxe (moitié de la vitesse)
+    // Scroll du background à la même vitesse que la caméra + offset par niveau
+    MAP_scrollTo(bgMap, cameraX, cameraY + levels[currentLevel].bgaOffsetY);
+
+    // Scroll du plan B avec effet parallaxe + offset par niveau
     if(bgbMap != NULL) {
-        MAP_scrollTo(bgbMap, cameraX / 2, 0);
+        MAP_scrollTo(bgbMap, cameraX / 2, bgbCameraY + levels[currentLevel].bgbOffsetY);
     }
 }void checkCollisions() {
     // Collision projectiles -> ennemis
