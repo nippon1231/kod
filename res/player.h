@@ -1,0 +1,19 @@
+#include <genesis.h>
+
+#ifndef _RES_PLAYER_H_
+#define _RES_PLAYER_H_
+
+#define PLAYERANIM_IDLE  0
+#define PLAYERANIM_WALK  1
+#define PLAYERANIM_JUMP 2
+#define PLAYERANIM_LVLUP 3
+#define PLAYERANIM_SHOOT 4
+#define PLAYERANIM_ATTACK_JUMP 5
+#define PLAYERANIM_HURT 6
+#define PLAYERANIM_FALL 7
+#define PLAYERANIM_DEATH 8
+
+#define PLAYERANIM_BULLET  0
+#define PLAYERANIM_BULLET_HIT  1
+
+#endif // _RES_PLAYER_H_
