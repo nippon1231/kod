@@ -165,7 +165,7 @@ void drawHUD();
 
 int main() {
 
-    VDP_setWindowVPos(TRUE, 22);
+    VDP_setWindowVPos(TRUE, 21);
     VDP_setTextPlane(WINDOW);
     VDP_setScreenWidth320();
     VDP_setScreenHeight224();
@@ -180,7 +180,7 @@ int main() {
     VDP_setBackgroundColor(16); // Index 16 de la palette (bleu dans la palette par défaut)
     
     initLevels();
-    loadLevel(0,VDPTilesFilled);  // Charger le niveau 1
+    loadLevel(1,VDPTilesFilled);  // Charger le niveau 2
 
     initGame();
     
@@ -241,30 +241,28 @@ void initLevels() {
     levels[0].enemySpawnY[7] = 0;
     
     // Niveau 2 (exemple - même configuration pour l'instant)
-    levels[1].bga = &bga_map;
-    levels[1].bgb = &bgb_map;
-    levels[1].bgaTileset = &bga_tileset;
-    levels[1].bgbTileset = &bgb_tileset;
-    levels[1].bgaPalette = &palette_lvl;
+    levels[1].bga = &lvl2bga_map;
+    levels[1].bgb = &lvl2bgb_map;
+    levels[1].bgaTileset = &lvl2bga_tileset;
+    levels[1].bgbTileset = &lvl2bgb_tileset;
+    levels[1].bgaPalette = &lvl2bga_pal;
     levels[1].bgaMaxOffsetY = 512; // Allow more vertical scroll for BG_A
     levels[1].enemySprite = &sprite_soldier;
     levels[1].enemyPalette = &palette_soldier;
-    levels[1].collisionMap = levelMap3;  // Map de collision du niveau 3
-    levels[1].mapWidth = 102;
-    levels[1].mapHeight = 20;
+    levels[1].collisionMap = levelMap2;  // Map de collision du niveau 3
+    levels[1].mapWidth = LVL2_MAP_WIDTH;
+    levels[1].mapHeight = LVL2_MAP_HEIGHT;
     levels[1].enemyCount = 8;
     levels[1].bgaMaxOffsetY = 1000;
-    levels[1].bgaScrollDelay = 10;
-    levels[1].bgbScrollDelay = 10;
-        levels[1].bgaScrollStep = 1;
-        levels[1].bgbScrollStep = 1;
+    levels[1].bgaScrollDelay = 0;
+    levels[1].bgbScrollDelay = 0;
+        levels[1].bgaScrollStep = 0;
+        levels[1].bgbScrollStep = 0;
     for(u8 i = 0; i < 8; i++) {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
     }
 
-
-    
     // Niveau 3 (exemple - même configuration pour l'instant)
     levels[2].bga = &lvl3bga_map;
     levels[2].bgb = &lvl3bgb_map;
@@ -274,7 +272,7 @@ void initLevels() {
     levels[2].bgbPalette = &lvl3bgb_pal ;
     levels[2].enemySprite = &sprite_soldier;
     levels[2].enemyPalette = &palette_soldier;
-    levels[2].collisionMap = levelMap2;  // Map de collision du niveau 2
+    levels[2].collisionMap = levelMap3;  // Map de collision du niveau 2
     levels[2].mapWidth = 191;
     levels[2].mapHeight = 70;
     levels[2].bgaOffsetY = 135;
@@ -309,6 +307,7 @@ u16 loadLevel(u8 levelIndex,u16 index) {
     
     // Charger les palettes
     PAL_setPalette(PAL0, level->bgaPalette->data, CPU);
+    
     PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
     PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
     

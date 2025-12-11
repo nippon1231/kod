@@ -2,10 +2,10 @@
 #define LVL1_H
 
 // Dimensions pour level 1 (peuvent être différentes pour chaque niveau)
-#define LVL1_MAP_WIDTH 191 
-#define LVL1_MAP_HEIGHT 20
-#define LVL2_MAP_WIDTH 191
-#define LVL2_MAP_HEIGHT 69
+#define LVL1_MAP_WIDTH 192 
+#define LVL1_MAP_HEIGHT 21
+#define LVL2_MAP_WIDTH 96
+#define LVL2_MAP_HEIGHT 21
 #define LVL3_MAP_WIDTH 198
 #define LVL3_MAP_HEIGHT 28
 
