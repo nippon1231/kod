@@ -155,9 +155,7 @@ int main() {
     VDP_setTextPlane(WINDOW);
     VDP_setScreenWidth320();
     VDP_setScreenHeight224();
-    // need to increase a bit DMA buffer size to init both plan tilemap and sprites
-    DMA_setBufferSize(10000);
-    DMA_setMaxTransferSize(10000);    
+
     SPR_init();
     
     // Charger les palettes
@@ -172,9 +170,7 @@ int main() {
     
     initGame();
     
-    // can restore default DMA buffer size
-    DMA_setBufferSizeToDefault();
-    DMA_setMaxTransferSizeToDefault();    
+
     // Boucle principale
     while(1) {
         handleInput();
@@ -225,7 +221,7 @@ void initLevels() {
     levels[0].enemySpawnY[4] = 0;
     levels[0].enemySpawnX[5] = 1100;
     levels[0].enemySpawnY[5] = 0;
-    levels[0].enemySpawnX[6] = 700;
+        levels[0].bgaMaxOffsetY = 256; // Allow more vertical scroll for BG_A
     levels[0].enemySpawnY[6] = 0;
     levels[0].enemySpawnX[7] = 1000;
     levels[0].enemySpawnY[7] = 0;
@@ -242,9 +238,9 @@ void initLevels() {
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 2
     levels[1].mapWidth = 191;
     levels[1].mapHeight = 70;
-    levels[1].bgaOffsetY = 56;
+    levels[1].bgaOffsetY = 135;
     levels[1].bgbOffsetY = 95;
-    levels[1].bgaMaxOffsetY = 600;
+    levels[1].bgaMaxOffsetY = 1000;
     levels[1].enemyCount = 8;
     levels[1].bgaScrollDelay = 2;
     levels[1].bgbScrollDelay = 28;
@@ -261,7 +257,7 @@ void initLevels() {
     levels[2].bgaTileset = &bga_tileset;
     levels[2].bgbTileset = &bgb_tileset;
     levels[2].bgaPalette = &palette_lvl;
-    levels[2].bgbPalette = &palette_lvlbg;
+        levels[1].bgaMaxOffsetY = 512; // Allow more vertical scroll for BG_A
     levels[2].enemySprite = &sprite_soldier;
     levels[2].enemyPalette = &palette_soldier;
     levels[2].collisionMap = levelMap3;  // Map de collision du niveau 3
