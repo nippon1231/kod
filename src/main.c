@@ -246,18 +246,19 @@ void initLevels() {
     levels[1].bgaTileset = &lvl2bga_tileset;
     levels[1].bgbTileset = &lvl2bgb_tileset;
     levels[1].bgaPalette = &lvl2bga_pal;
-    levels[1].bgaMaxOffsetY = 512; // Allow more vertical scroll for BG_A
+    levels[1].bgbPalette = &lvl2bgb_pal ;
+    levels[1].bgaMaxOffsetY = 0; // Allow more vertical scroll for BG_A
     levels[1].enemySprite = &sprite_soldier;
     levels[1].enemyPalette = &palette_soldier;
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 3
     levels[1].mapWidth = LVL2_MAP_WIDTH;
     levels[1].mapHeight = LVL2_MAP_HEIGHT;
     levels[1].enemyCount = 8;
-    levels[1].bgaMaxOffsetY = 1000;
+    levels[1].bgaMaxOffsetY = 0;
     levels[1].bgaScrollDelay = 0;
     levels[1].bgbScrollDelay = 0;
-        levels[1].bgaScrollStep = 0;
-        levels[1].bgbScrollStep = 0;
+    levels[1].bgaScrollStep = 0;
+    levels[1].bgbScrollStep = 0;
     for(u8 i = 0; i < 8; i++) {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
@@ -391,7 +392,7 @@ void initGame() {
     u16 soldierTileIndex = ensureGfxLoaded(level->enemySprite);
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         enemies[i].active = FALSE;
-        enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR_FULL(PAL2, TRUE, FALSE, FALSE, soldierTileIndex));
+        enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, soldierTileIndex));
         SPR_setVisibility(enemies[i].sprite, HIDDEN);
     }
     

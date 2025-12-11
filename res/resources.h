@@ -17,7 +17,6 @@ extern const Palette palette_lvlbg;
 extern const TileSet lvl2bga_tileset;
 extern const MapDefinition lvl2bga_map;
 extern const Palette lvl2bga_pal;
-extern const Palette lvl2bga_pal2;
 extern const TileSet lvl2bgb_tileset;
 extern const MapDefinition lvl2bgb_map;
 extern const Palette lvl2bgb_pal;
