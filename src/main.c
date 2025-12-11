@@ -133,10 +133,24 @@ u16 bgbCameraY = 0;   // Offset vertical pour BG_B
 u8 currentLevel = 0;
 Level levels[3];  // 3 niveaux pour l'exemple
 
+// Track loaded tilesets and sprite gfx to avoid duplicate VDP loads
+#define MAX_LOADED_TILESETS 16
+typedef struct { const TileSet* ts; u16 index; } LoadedTileSet;
+static LoadedTileSet loadedTileSets[MAX_LOADED_TILESETS];
+static u8 loadedTileSetCount = 0;
+
+#define MAX_LOADED_GFX 16
+typedef struct { const void* gfx; u16 index; } LoadedGfx;
+static LoadedGfx loadedGfx[MAX_LOADED_GFX];
+static u8 loadedGfxCount = 0;
+
 // Prototypes
 void initLevels();
 u16 loadLevel(u8 levelIndex,u16 index);
 void initGame();
+// VRAM helpers
+u16 ensureTilesetLoaded(const TileSet* ts);
+u16 ensureGfxLoaded(const SpriteDefinition* spr);
 void updatePlayer();
 void updateBullets();
 void updateEnemies();
@@ -166,8 +180,8 @@ int main() {
     VDP_setBackgroundColor(16); // Index 16 de la palette (bleu dans la palette par défaut)
     
     initLevels();
-   VDPTilesFilled += loadLevel(1,VDPTilesFilled);  // Charger le niveau 1
-    
+    loadLevel(0,VDPTilesFilled);  // Charger le niveau 1
+
     initGame();
     
 
@@ -208,8 +222,8 @@ void initLevels() {
     levels[0].bgaScrollDelay = 8;
     levels[0].bgbScrollDelay = 8;
     levels[0].enemySpawnX[0] = 300;
-    levels[0].bgaScrollStep = 1;
-    levels[0].bgbScrollStep = 1;
+    levels[0].bgaScrollStep = 0;
+    levels[0].bgbScrollStep = 0;
     levels[0].enemySpawnY[0] = 0;
     levels[0].enemySpawnX[1] = 450;
     levels[0].enemySpawnY[1] = 0;
@@ -221,54 +235,56 @@ void initLevels() {
     levels[0].enemySpawnY[4] = 0;
     levels[0].enemySpawnX[5] = 1100;
     levels[0].enemySpawnY[5] = 0;
-        levels[0].bgaMaxOffsetY = 256; // Allow more vertical scroll for BG_A
+    levels[0].bgaMaxOffsetY = 256; // Allow more vertical scroll for BG_A
     levels[0].enemySpawnY[6] = 0;
     levels[0].enemySpawnX[7] = 1000;
     levels[0].enemySpawnY[7] = 0;
     
     // Niveau 2 (exemple - même configuration pour l'instant)
-    levels[1].bga = &lvl3bga_map;
-    levels[1].bgb = &lvl3bgb_map;
-    levels[1].bgaTileset = &lvl3bga_tileset;
-    levels[1].bgbTileset = &lvl3bgb_tileset;
-    levels[1].bgaPalette = &lvl3bga_pal;
-    levels[1].bgbPalette = &lvl3bgb_pal ;
+    levels[1].bga = &bga_map;
+    levels[1].bgb = &bgb_map;
+    levels[1].bgaTileset = &bga_tileset;
+    levels[1].bgbTileset = &bgb_tileset;
+    levels[1].bgaPalette = &palette_lvl;
+    levels[1].bgaMaxOffsetY = 512; // Allow more vertical scroll for BG_A
     levels[1].enemySprite = &sprite_soldier;
     levels[1].enemyPalette = &palette_soldier;
-    levels[1].collisionMap = levelMap2;  // Map de collision du niveau 2
-    levels[1].mapWidth = 191;
-    levels[1].mapHeight = 70;
-    levels[1].bgaOffsetY = 135;
-    levels[1].bgbOffsetY = 95;
-    levels[1].bgaMaxOffsetY = 1000;
+    levels[1].collisionMap = levelMap3;  // Map de collision du niveau 3
+    levels[1].mapWidth = 102;
+    levels[1].mapHeight = 20;
     levels[1].enemyCount = 8;
-    levels[1].bgaScrollDelay = 2;
-    levels[1].bgbScrollDelay = 28;
+    levels[1].bgaMaxOffsetY = 1000;
+    levels[1].bgaScrollDelay = 10;
+    levels[1].bgbScrollDelay = 10;
         levels[1].bgaScrollStep = 1;
         levels[1].bgbScrollStep = 1;
     for(u8 i = 0; i < 8; i++) {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
     }
+
+
     
     // Niveau 3 (exemple - même configuration pour l'instant)
-    levels[2].bga = &bga_map;
-    levels[2].bgb = &bgb_map;
-    levels[2].bgaTileset = &bga_tileset;
-    levels[2].bgbTileset = &bgb_tileset;
-    levels[2].bgaPalette = &palette_lvl;
-        levels[1].bgaMaxOffsetY = 512; // Allow more vertical scroll for BG_A
+    levels[2].bga = &lvl3bga_map;
+    levels[2].bgb = &lvl3bgb_map;
+    levels[2].bgaTileset = &lvl3bga_tileset;
+    levels[2].bgbTileset = &lvl3bgb_tileset;
+    levels[2].bgaPalette = &lvl3bga_pal;
+    levels[2].bgbPalette = &lvl3bgb_pal ;
     levels[2].enemySprite = &sprite_soldier;
     levels[2].enemyPalette = &palette_soldier;
-    levels[2].collisionMap = levelMap3;  // Map de collision du niveau 3
-    levels[2].mapWidth = 102;
-    levels[2].mapHeight = 20;
+    levels[2].collisionMap = levelMap2;  // Map de collision du niveau 2
+    levels[2].mapWidth = 191;
+    levels[2].mapHeight = 70;
+    levels[2].bgaOffsetY = 135;
+    levels[2].bgbOffsetY = 95;
+    levels[2].bgaMaxOffsetY = 1000;
     levels[2].enemyCount = 8;
-    levels[2].bgaMaxOffsetY = 0;
-    levels[2].bgaScrollDelay = 10;
-    levels[2].bgbScrollDelay = 10;
-        levels[2].bgaScrollStep = 1;
-        levels[2].bgbScrollStep = 1;
+    levels[2].bgaScrollDelay = 3;
+    levels[2].bgbScrollDelay =25;
+    levels[2].bgaScrollStep = 1;
+    levels[2].bgbScrollStep = 2;
     for(u8 i = 0; i < 8; i++) {
         levels[2].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[2].enemySpawnY[i] = levels[0].enemySpawnY[i];
@@ -276,7 +292,7 @@ void initLevels() {
 }
 
 u16 loadLevel(u8 levelIndex,u16 index) {
-    if(levelIndex >= 3) return;  // Sécurité
+    if(levelIndex >= 3) return 0;  // Sécurité
     
     currentLevel = levelIndex;
     Level* level = &levels[levelIndex];
@@ -296,33 +312,55 @@ u16 loadLevel(u8 levelIndex,u16 index) {
     PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
     PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
     
+    // Ensure tilesets are loaded once and get their VRAM indices
+    u16 bgaTileIndex = ensureTilesetLoaded(level->bgaTileset);
+    bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, bgaTileIndex));
 
-    VDP_loadTileSet(level->bgaTileset, index, DMA);
+    u16 bgbTileIndex = ensureTilesetLoaded(level->bgbTileset);
+    bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, bgbTileIndex));
 
-
-    // Charger le tileset pour le plan A (foreground)
-    u16 bgaTileIndex = TILE_USER_INDEX + level->bgaTileset->numTile;    
-
-    // Charger le tileset pour le plan B (background parallaxe) en premier
-    VDP_loadTileSet(level->bgbTileset, bgaTileIndex, DMA);
-    
-    // Créer et afficher la map sur le plan B (arrière-plan)
-    bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE,bgaTileIndex ));
-  
-   
-    // Créer et afficher la map sur le plan A
-    bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TILE_USER_INDEX));
-    
     // Mettre à jour la largeur de la map en pixels
     mapWidth = level->mapWidth * 8;
     mapHeight = level->mapHeight * 8;
-    return bgaTileIndex+level->bgbTileset->numTile;
+    return 0;
+}
+
+// Helpers: ensure a tileset is loaded once and return its VRAM index
+u16 ensureTilesetLoaded(const TileSet* ts) {
+    for(u8 i = 0; i < loadedTileSetCount; i++) {
+        if(loadedTileSets[i].ts == ts) return loadedTileSets[i].index;
+    }
+    if(loadedTileSetCount >= MAX_LOADED_TILESETS) return TILE_USER_INDEX;
+    u16 idx = VDPTilesFilled;
+    VDP_loadTileSet(ts, idx, DMA);
+    loadedTileSets[loadedTileSetCount].ts = ts;
+    loadedTileSets[loadedTileSetCount].index = idx;
+    loadedTileSetCount++;
+    VDPTilesFilled += ts->numTile;
+    return idx;
+}
+
+// Helpers: lightweight tracking for sprite gfx (do not access internal members)
+u16 ensureGfxLoaded(const SpriteDefinition* spr) {
+    for(u8 i = 0; i < loadedGfxCount; i++) {
+        if(loadedGfx[i].gfx == (const void*)spr) return loadedGfx[i].index;
+    }
+    if(loadedGfxCount >= MAX_LOADED_GFX) return TILE_USER_INDEX;
+    // Fallback: do not attempt to load sprite internal gfx (unknown member layout).
+    // Return TILE_USER_INDEX as a safe default and track the sprite pointer.
+    u16 idx = TILE_USER_INDEX;
+    loadedGfx[loadedGfxCount].gfx = (const void*)spr;
+    loadedGfx[loadedGfxCount].index = idx;
+    loadedGfxCount++;
+    return idx;
 }
 
 void initGame() {
     // Initialiser le joueur dans une zone autorisée (tuiles avec valeur 1)
     // Y = 120 + 24 pixels (pieds) = 144 / 8 = tuile 18, qui est dans la zone marchable
-    player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR(PAL1, 0, FALSE, FALSE));
+    // Ensure player gfx is loaded once and get its VRAM index
+    u16 playerTileIndex = ensureGfxLoaded(&sprite_player);
+    player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, playerTileIndex));
     player.x = 80;
     player.y = 70;
     player.groundY = 120;
@@ -340,8 +378,9 @@ void initGame() {
     SPR_setAnim(player.sprite, PLAYERANIM_IDLE);
     
     // Initialiser les projectiles
+    u16 bulletTileIndex = ensureGfxLoaded(&sprite_player_bullet);
     for(u8 i = 0; i < MAX_BULLETS; i++) {
-        bullets[i].sprite = SPR_addSprite(&sprite_player_bullet, -32, -32, TILE_ATTR(PAL1, 0, FALSE, FALSE));
+        bullets[i].sprite = SPR_addSprite(&sprite_player_bullet, -32, -32, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, bulletTileIndex));
         bullets[i].active = FALSE;
         bullets[i].exploding = FALSE;
         bullets[i].explodeTimer = 0;
@@ -350,9 +389,10 @@ void initGame() {
     
     // Initialiser les ennemis
     Level* level = &levels[currentLevel];
+    u16 soldierTileIndex = ensureGfxLoaded(level->enemySprite);
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         enemies[i].active = FALSE;
-        enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR(PAL2, 0, FALSE, FALSE));
+        enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR_FULL(PAL2, TRUE, FALSE, FALSE, soldierTileIndex));
         SPR_setVisibility(enemies[i].sprite, HIDDEN);
     }
     
