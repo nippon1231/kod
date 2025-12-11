@@ -135,7 +135,7 @@ Level levels[3];  // 3 niveaux pour l'exemple
 
 // Prototypes
 void initLevels();
-void loadLevel(u8 levelIndex);
+u16 loadLevel(u8 levelIndex,u16 index);
 void initGame();
 void updatePlayer();
 void updateBullets();
@@ -155,6 +155,9 @@ int main() {
     VDP_setTextPlane(WINDOW);
     VDP_setScreenWidth320();
     VDP_setScreenHeight224();
+    // need to increase a bit DMA buffer size to init both plan tilemap and sprites
+    DMA_setBufferSize(10000);
+    DMA_setMaxTransferSize(10000);    
     SPR_init();
     
     // Charger les palettes
@@ -165,10 +168,13 @@ int main() {
     VDP_setBackgroundColor(16); // Index 16 de la palette (bleu dans la palette par défaut)
     
     initLevels();
-    loadLevel(1);  // Charger le niveau 1
+   VDPTilesFilled += loadLevel(1,VDPTilesFilled);  // Charger le niveau 1
     
     initGame();
     
+    // can restore default DMA buffer size
+    DMA_setBufferSizeToDefault();
+    DMA_setMaxTransferSizeToDefault();    
     // Boucle principale
     while(1) {
         handleInput();
@@ -206,8 +212,8 @@ void initLevels() {
     levels[0].bgaScrollDelay = 8;
     levels[0].bgbScrollDelay = 8;
     levels[0].enemySpawnX[0] = 300;
-        levels[0].bgaScrollStep = 1;
-        levels[0].bgbScrollStep = 1;
+    levels[0].bgaScrollStep = 1;
+    levels[0].bgbScrollStep = 1;
     levels[0].enemySpawnY[0] = 0;
     levels[0].enemySpawnX[1] = 450;
     levels[0].enemySpawnY[1] = 0;
@@ -234,13 +240,13 @@ void initLevels() {
     levels[1].enemySprite = &sprite_soldier;
     levels[1].enemyPalette = &palette_soldier;
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 2
-    levels[1].mapWidth = 89;
+    levels[1].mapWidth = 191;
     levels[1].mapHeight = 70;
     levels[1].bgaOffsetY = 56;
-    levels[1].bgbOffsetY = 70;
-    levels[1].bgaMaxOffsetY = 200;
+    levels[1].bgbOffsetY = 95;
+    levels[1].bgaMaxOffsetY = 600;
     levels[1].enemyCount = 8;
-    levels[1].bgaScrollDelay = 5;
+    levels[1].bgaScrollDelay = 2;
     levels[1].bgbScrollDelay = 28;
         levels[1].bgaScrollStep = 1;
         levels[1].bgbScrollStep = 1;
@@ -273,7 +279,7 @@ void initLevels() {
     }
 }
 
-void loadLevel(u8 levelIndex) {
+u16 loadLevel(u8 levelIndex,u16 index) {
     if(levelIndex >= 3) return;  // Sécurité
     
     currentLevel = levelIndex;
@@ -294,22 +300,27 @@ void loadLevel(u8 levelIndex) {
     PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
     PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
     
+
+    VDP_loadTileSet(level->bgaTileset, index, DMA);
+
+
+    // Charger le tileset pour le plan A (foreground)
+    u16 bgaTileIndex = TILE_USER_INDEX + level->bgaTileset->numTile;    
+
     // Charger le tileset pour le plan B (background parallaxe) en premier
-    VDP_loadTileSet(level->bgbTileset, TILE_USER_INDEX, DMA);
+    VDP_loadTileSet(level->bgbTileset, bgaTileIndex, DMA);
     
     // Créer et afficher la map sur le plan B (arrière-plan)
-    bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, TILE_USER_INDEX));
-    
-    // Charger le tileset pour le plan A (foreground)
-    u16 bgaTileIndex = TILE_USER_INDEX + level->bgbTileset->numTile;
-    VDP_loadTileSet(level->bgaTileset, bgaTileIndex, DMA);
-    
+    bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE,bgaTileIndex ));
+  
+   
     // Créer et afficher la map sur le plan A
-    bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, bgaTileIndex));
+    bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TILE_USER_INDEX));
     
     // Mettre à jour la largeur de la map en pixels
     mapWidth = level->mapWidth * 8;
     mapHeight = level->mapHeight * 8;
+    return bgaTileIndex+level->bgbTileset->numTile;
 }
 
 void initGame() {
