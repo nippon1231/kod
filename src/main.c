@@ -180,8 +180,8 @@ int main() {
     VDP_setBackgroundColor(16); // Index 16 de la palette (bleu dans la palette par défaut)
     
     initLevels();
-    loadLevel(1,VDPTilesFilled);  // Charger le niveau 2
 
+    loadLevel(currentLevel,VDPTilesFilled);  // Charger le niveau 2
     initGame();
     
 
@@ -194,7 +194,6 @@ int main() {
         updateCamera();
         checkCollisions();
         drawHUD();
-        
         SPR_update();
         SYS_doVBlankProcess();
     }
@@ -263,7 +262,6 @@ void initLevels() {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
     }
-
     // Niveau 3 (exemple - même configuration pour l'instant)
     levels[2].bga = &lvl3bga_map;
     levels[2].bgb = &lvl3bgb_map;
@@ -274,8 +272,8 @@ void initLevels() {
     levels[2].enemySprite = &sprite_soldier;
     levels[2].enemyPalette = &palette_soldier;
     levels[2].collisionMap = levelMap3;  // Map de collision du niveau 2
-    levels[2].mapWidth = 191;
-    levels[2].mapHeight = 70;
+    levels[2].mapWidth = LVL3_MAP_WIDTH;
+    levels[2].mapHeight = LVL3_MAP_HEIGHT;
     levels[2].bgaOffsetY = 135;
     levels[2].bgbOffsetY = 95;
     levels[2].bgaMaxOffsetY = 1000;
@@ -305,19 +303,42 @@ u16 loadLevel(u8 levelIndex,u16 index) {
         MAP_release(bgbMap);
         bgbMap = NULL;
     }
-    
-    // Charger les palettes
-    PAL_setPalette(PAL0, level->bgaPalette->data, CPU);
-    
-    PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
-    PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
-    
-    // Ensure tilesets are loaded once and get their VRAM indices
-    u16 bgaTileIndex = ensureTilesetLoaded(level->bgaTileset);
-    bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, bgaTileIndex));
 
-    u16 bgbTileIndex = ensureTilesetLoaded(level->bgbTileset);
-    bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, bgbTileIndex));
+    // Clear VRAM tilemap planes to avoid leftover tiles/indexes
+    // Clear full BG_A and BG_B tilemaps (covering typical 64x32 tilemap)
+    VDP_clearTileMapRect(BG_A, 0, 0, 64, 32);
+    VDP_clearTileMapRect(BG_B, 0, 0, 64, 32);
+
+    // Reset our loaded tiles/gfx trackers so subsequent loads start fresh
+    loadedTileSetCount = 0;
+    loadedGfxCount = 0;
+    VDPTilesFilled = TILE_USER_INDEX;
+    
+    // Charger les palettes (si fournies)
+    if(level->bgaPalette) {
+        PAL_setPalette(PAL0, level->bgaPalette->data, CPU);
+    }
+    if(level->bgbPalette) {
+        PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
+    }
+    if(level->enemyPalette) {
+        PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
+    }
+
+    // Ensure tilesets are loaded once and get their VRAM indices (guarded)
+    if(level->bgaTileset && level->bga) {
+        u16 bgaTileIndex = ensureTilesetLoaded(level->bgaTileset);
+        bgMap = MAP_create(level->bga, BG_A, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, bgaTileIndex));
+    } else {
+        bgMap = NULL;
+    }
+
+    if(level->bgbTileset && level->bgb) {
+        u16 bgbTileIndex = ensureTilesetLoaded(level->bgbTileset);
+        bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, bgbTileIndex));
+    } else {
+        bgbMap = NULL;
+    }
 
     // Mettre à jour la largeur de la map en pixels
     mapWidth = level->mapWidth * 8;
@@ -360,7 +381,11 @@ void initGame() {
     // Y = 120 + 24 pixels (pieds) = 144 / 8 = tuile 18, qui est dans la zone marchable
     // Ensure player gfx is loaded once and get its VRAM index
     u16 playerTileIndex = ensureGfxLoaded(&sprite_player);
-    player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, playerTileIndex));
+    if(player.sprite == NULL) {
+        player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, playerTileIndex));
+    } else {
+        SPR_setPosition(player.sprite, 80, 70);
+    }
     player.x = 80;
     player.y = 70;
     player.groundY = 120;
@@ -380,7 +405,11 @@ void initGame() {
     // Initialiser les projectiles
     u16 bulletTileIndex = ensureGfxLoaded(&sprite_player_bullet);
     for(u8 i = 0; i < MAX_BULLETS; i++) {
-        bullets[i].sprite = SPR_addSprite(&sprite_player_bullet, -32, -32, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, bulletTileIndex));
+        if(bullets[i].sprite == NULL) {
+            bullets[i].sprite = SPR_addSprite(&sprite_player_bullet, -32, -32, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, bulletTileIndex));
+        } else {
+            SPR_setPosition(bullets[i].sprite, -32, -32);
+        }
         bullets[i].active = FALSE;
         bullets[i].exploding = FALSE;
         bullets[i].explodeTimer = 0;
@@ -389,11 +418,20 @@ void initGame() {
     
     // Initialiser les ennemis
     Level* level = &levels[currentLevel];
-    u16 soldierTileIndex = ensureGfxLoaded(level->enemySprite);
+    u16 soldierTileIndex = 0;
+    if(level->enemySprite) soldierTileIndex = ensureGfxLoaded(level->enemySprite);
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         enemies[i].active = FALSE;
-        enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, soldierTileIndex));
-        SPR_setVisibility(enemies[i].sprite, HIDDEN);
+        if(enemies[i].sprite == NULL) {
+            if(level->enemySprite) {
+                enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, soldierTileIndex));
+            } else {
+                enemies[i].sprite = NULL;
+            }
+        } else if(enemies[i].sprite) {
+            SPR_setPosition(enemies[i].sprite, -32, -32);
+        }
+        if(enemies[i].sprite) SPR_setVisibility(enemies[i].sprite, HIDDEN);
     }
     
     // Spawner les ennemis du niveau actuel
@@ -407,7 +445,10 @@ void handleInput() {
     
     player.velX = 0;
     u8 jumpInitiated = FALSE;
-    
+        if(joy & BUTTON_C) {
+            loadLevel(currentLevel+1,VDPTilesFilled);  // Charger le niveau 2 (index 1)
+            initGame();
+        }
     // Saut avec B - vérifier en premier avant tout autre déplacement
     if((joy & BUTTON_B) && player.onGround) {
         player.groundY = player.y;  // Sauvegarder la position Y actuelle avant le saut
