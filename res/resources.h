@@ -8,6 +8,8 @@ extern const Palette palette_player;
 extern const SpriteDefinition sprite_player_bullet;
 extern const SpriteDefinition sprite_soldier;
 extern const Palette palette_soldier;
+extern const SpriteDefinition sprite_range1;
+extern const Palette palette_range1;
 extern const TileSet bga_tileset;
 extern const MapDefinition bga_map;
 extern const Palette palette_lvl;

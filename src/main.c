@@ -267,8 +267,8 @@ void initLevels() {
     levels[1].bgaPalette = &lvl2bga_pal;
     levels[1].bgbPalette = &lvl2bgb_pal ;
     levels[1].bgaMaxOffsetY = 0; // Allow more vertical scroll for BG_A
-    levels[1].enemySprite = &sprite_soldier;
-    levels[1].enemyPalette = &palette_soldier;
+    levels[1].enemySprite = &sprite_range1;
+    levels[1].enemyPalette = &palette_range1;
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 3
     levels[1].mapWidth = LVL2_MAP_WIDTH;
     levels[1].mapHeight = LVL2_MAP_HEIGHT;
@@ -469,9 +469,9 @@ void handleInput() {
     player.velX = 0;
     u8 jumpInitiated = FALSE;
         if(joy & BUTTON_C) {
+            initLevels();
             loadLevel(currentLevel+1,VDPTilesFilled);  // Charger le niveau 2 (index 1)
             initGame();
-            updateCamera();
         }
     // Saut avec B - vérifier en premier avant tout autre déplacement
     if((joy & BUTTON_B) && player.onGround) {
@@ -1051,7 +1051,8 @@ void updateCamera() {
     if(bgbMap != NULL) {
         MAP_scrollTo(bgbMap, cameraX / 2, bgbCameraY + levels[currentLevel].bgbOffsetY);
     }
-}void checkCollisions() {
+}
+void checkCollisions() {
     // Collision projectiles -> ennemis
     for(u8 i = 0; i < MAX_BULLETS; i++) {
         if(bullets[i].active && !bullets[i].exploding) {
