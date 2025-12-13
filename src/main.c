@@ -16,6 +16,10 @@
 #define BULLET_MAX_DISTANCE 180
 #define ENEMY_SPEED 1
 #define ENEMY_ATTACK_RANGE 30
+#define ENEMY_TYPE_SOLDIER 0
+#define ENEMY_TYPE_RANGE   1
+#define ENEMY_TYPE_TANK    2
+#define ENEMY_TYPE_FLYING  3
 #define SHOOT_COOLDOWN 15
 #define PLAYER_MAX_HP 100
 #define ENEMY_MAX_HP 50
@@ -58,6 +62,7 @@ typedef struct {
 // Structure pour les ennemis
 typedef struct {
     Sprite* sprite;
+    u8 type;
     s16 x;
     s16 y;
     s16 velY;
@@ -75,6 +80,12 @@ typedef struct {
     s16 hitboxHeight;
     s16 hp;
     s16 maxHp;
+    u8 speed;
+    s16 attackRange;
+    u8 damage;
+    // AI helpers
+    s16 baseY;     // spawn Y for flying hover center
+    s16 aiTimer;   // generic AI timer / phase
 } Enemy;
 
 // Structure pour un niveau
@@ -93,6 +104,7 @@ typedef struct {
     u8 enemyCount;            // Nombre d'ennemis
     s16 enemySpawnX[MAX_ENEMIES];  // Positions X de spawn
     s16 enemySpawnY[MAX_ENEMIES];  // Positions Y de spawn
+    u8 enemySpawnType[MAX_ENEMIES]; // Type d'ennemis à spawn
     s16 bgaOffsetY; // Offset vertical BG_A pour ce niveau
     s16 bgbOffsetY; // Offset vertical BG_B pour ce niveau
     s16 bgaMaxOffsetY; // Offset vertical maximum autorisé pour BG_A
@@ -160,7 +172,7 @@ u8 canMoveToPosition(s16 x, s16 y);
 void checkAdjacentSolids(s16 px, s16 py, u8* leftSolid, u8* rightSolid);
 void handleInput();
 void checkCollisions();
-void spawnEnemy(s16 x, s16 y);
+void spawnEnemy(s16 x, s16 y, u8 type);
 void drawHUD();
 
 int main() {
@@ -221,22 +233,30 @@ void initLevels() {
     levels[0].bgaScrollDelay = 8;
     levels[0].bgbScrollDelay = 8;
     levels[0].enemySpawnX[0] = 300;
+    levels[0].enemySpawnType[0] = 0; // soldier
     levels[0].bgaScrollStep = 0;
     levels[0].bgbScrollStep = 0;
     levels[0].enemySpawnY[0] = 0;
     levels[0].enemySpawnX[1] = 450;
+    levels[0].enemySpawnType[1] = 1; // ranged
     levels[0].enemySpawnY[1] = 0;
     levels[0].enemySpawnX[2] = 600;
+    levels[0].enemySpawnType[2] = 0;
     levels[0].enemySpawnY[2] = 0;
     levels[0].enemySpawnX[3] = 800;
+    levels[0].enemySpawnType[3] = 2; // tank
     levels[0].enemySpawnY[3] = 0;
     levels[0].enemySpawnX[4] = 950;
+    levels[0].enemySpawnType[4] = 0;
     levels[0].enemySpawnY[4] = 0;
     levels[0].enemySpawnX[5] = 1100;
+    levels[0].enemySpawnType[5] = 0;
     levels[0].enemySpawnY[5] = 0;
     levels[0].bgaMaxOffsetY = 256; // Allow more vertical scroll for BG_A
     levels[0].enemySpawnY[6] = 0;
+    levels[0].enemySpawnType[6] = 1;
     levels[0].enemySpawnX[7] = 1000;
+    levels[0].enemySpawnType[7] = 3; // flying
     levels[0].enemySpawnY[7] = 0;
     
     // Niveau 2 (exemple - même configuration pour l'instant)
@@ -261,6 +281,7 @@ void initLevels() {
     for(u8 i = 0; i < 8; i++) {
         levels[1].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[1].enemySpawnY[i] = levels[0].enemySpawnY[i];
+        levels[1].enemySpawnType[i] = levels[0].enemySpawnType[i];
     }
     // Niveau 3 (exemple - même configuration pour l'instant)
     levels[2].bga = &lvl3bga_map;
@@ -285,11 +306,12 @@ void initLevels() {
     for(u8 i = 0; i < 8; i++) {
         levels[2].enemySpawnX[i] = levels[0].enemySpawnX[i];
         levels[2].enemySpawnY[i] = levels[0].enemySpawnY[i];
+        levels[2].enemySpawnType[i] = levels[0].enemySpawnType[i];
     }
 }
 
 u16 loadLevel(u8 levelIndex,u16 index) {
-    if(levelIndex >= 3) return 0;  // Sécurité
+    if(levelIndex >= 3) levelIndex=0;  // Sécurité
     
     currentLevel = levelIndex;
     Level* level = &levels[levelIndex];
@@ -308,7 +330,9 @@ u16 loadLevel(u8 levelIndex,u16 index) {
     // Clear full BG_A and BG_B tilemaps (covering typical 64x32 tilemap)
     VDP_clearTileMapRect(BG_A, 0, 0, 64, 32);
     VDP_clearTileMapRect(BG_B, 0, 0, 64, 32);
-
+    cameraX=0;
+    cameraY = 0;
+    bgbCameraY = 0;
     // Reset our loaded tiles/gfx trackers so subsequent loads start fresh
     loadedTileSetCount = 0;
     loadedGfxCount = 0;
@@ -419,15 +443,12 @@ void initGame() {
     // Initialiser les ennemis
     Level* level = &levels[currentLevel];
     u16 soldierTileIndex = 0;
-    if(level->enemySprite) soldierTileIndex = ensureGfxLoaded(level->enemySprite);
+    const SpriteDefinition* enemyDef = level->enemySprite ? level->enemySprite : &sprite_soldier;
+    soldierTileIndex = ensureGfxLoaded(enemyDef);
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         enemies[i].active = FALSE;
         if(enemies[i].sprite == NULL) {
-            if(level->enemySprite) {
-                enemies[i].sprite = SPR_addSprite(level->enemySprite, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, soldierTileIndex));
-            } else {
-                enemies[i].sprite = NULL;
-            }
+            enemies[i].sprite = SPR_addSprite(enemyDef, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, soldierTileIndex));
         } else if(enemies[i].sprite) {
             SPR_setPosition(enemies[i].sprite, -32, -32);
         }
@@ -435,9 +456,11 @@ void initGame() {
     }
     
     // Spawner les ennemis du niveau actuel
-    for(u8 i = 0; i < level->enemyCount && i < MAX_ENEMIES; i++) {
-        spawnEnemy(level->enemySpawnX[i], level->enemySpawnY[i]);
-    }
+        for(u8 i = 0; i < level->enemyCount && i < MAX_ENEMIES; i++) {
+            u8 etype = 0;
+            if(i < MAX_ENEMIES) etype = level->enemySpawnType[i];
+            spawnEnemy(level->enemySpawnX[i], level->enemySpawnY[i], etype);
+        }
 }
 
 void handleInput() {
@@ -448,6 +471,7 @@ void handleInput() {
         if(joy & BUTTON_C) {
             loadLevel(currentLevel+1,VDPTilesFilled);  // Charger le niveau 2 (index 1)
             initGame();
+            updateCamera();
         }
     // Saut avec B - vérifier en premier avant tout autre déplacement
     if((joy & BUTTON_B) && player.onGround) {
@@ -712,20 +736,54 @@ void updateEnemies() {
                 continue;
             }
             
-            // Appliquer la gravité si l'ennemi n'est pas au sol
-            if(!enemies[i].onGround) {
-                enemies[i].velY += GRAVITY;
-                enemies[i].y += enemies[i].velY;
-                
-                // Vérifier si l'ennemi atteint une zone marchable (tile 1)
-                if(canMoveToPosition(enemies[i].x, enemies[i].y)) {
-                    enemies[i].onGround = TRUE;
-                    enemies[i].velY = 0;
-                } else if(enemies[i].y + 24 > 160) {
-                    // Limite de la ligne 20
-                    enemies[i].y = 136;
-                    enemies[i].onGround = TRUE;
-                    enemies[i].velY = 0;
+            // Flying enemies: simple hover/move AI (no gravity)
+            if(enemies[i].type == ENEMY_TYPE_FLYING) {
+                s16 fdistX = player.x - enemies[i].x;
+                s16 fdistY = player.y - enemies[i].y;
+                // simple hover: use aiTimer as phase
+                enemies[i].aiTimer++;
+                s16 phase = (enemies[i].aiTimer & 31) - 16; // -16..15
+                s16 hover = phase / 4; // -4..3 pixels
+                // try to maintain a horizontal distance while hovering
+                if(abs(fdistX) < enemies[i].attackRange && abs(fdistY) < 20) {
+                    if(!enemies[i].attacking) {
+                        enemies[i].attacking = TRUE;
+                        enemies[i].attackCooldown = 60;
+                        SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
+                    }
+                } else if(!enemies[i].attacking) {
+                    // Move towards/strafe around player a bit
+                    s16 nx = enemies[i].x;
+                    s16 ny = enemies[i].baseY + hover;
+                    if(abs(fdistX) > 8) {
+                        nx += (fdistX > 0) ? enemies[i].speed : -enemies[i].speed;
+                        enemies[i].facingRight = (fdistX > 0) ? TRUE : FALSE;
+                    } else {
+                        // small strafe motion
+                        nx += (enemies[i].aiTimer & 1) ? enemies[i].speed : -enemies[i].speed;
+                    }
+                    enemies[i].x = nx;
+                    enemies[i].y = ny;
+                    SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                }
+                // Flying enemies do not use gravity
+            }
+            else {
+                // Appliquer la gravité si l'ennemi n'est pas au sol
+                if(!enemies[i].onGround) {
+                    enemies[i].velY += GRAVITY;
+                    enemies[i].y += enemies[i].velY;
+                    
+                    // Vérifier si l'ennemi atteint une zone marchable (tile 1)
+                    if(canMoveToPosition(enemies[i].x, enemies[i].y)) {
+                        enemies[i].onGround = TRUE;
+                        enemies[i].velY = 0;
+                    } else if(enemies[i].y + 24 > 160) {
+                        // Limite de la ligne 20
+                        enemies[i].y = 136;
+                        enemies[i].onGround = TRUE;
+                        enemies[i].velY = 0;
+                    }
                 }
             }
             
@@ -747,64 +805,115 @@ void updateEnemies() {
             
             // Logique d'action uniquement si pas de cooldown
             if(enemies[i].attackCooldown == 0) {
-                // Attaque si très proche (même X et même Y)
-                if(abs(distX) < ENEMY_ATTACK_RANGE && abs(distY) < 10) {
-                    if(!enemies[i].attacking) {
+                // Behavior by type
+                if(enemies[i].type == ENEMY_TYPE_TANK) {
+                    // Tank: if within charge trigger, start charging
+                    if(abs(distX) < 80 && !enemies[i].attacking) {
+                        // begin charge
                         enemies[i].attacking = TRUE;
-                        enemies[i].attackCooldown = 60; // Cooldown après attaque
+                        enemies[i].aiTimer = 30; // charge duration
+                        enemies[i].attackCooldown = 90;
                         SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
                     }
-                }
-                // Poursuivre le joueur
-                else if(abs(distX) < 200 && !enemies[i].attacking) {
-                    SPR_setAnim(enemies[i].sprite, EANIM_WALK);
-                    
-                    s16 newX = enemies[i].x;
-                    s16 newY = enemies[i].y;
-                    
-                    // Priorité 1: Se mettre au même niveau Y que le joueur
-                    if(abs(distY) > 5) {
-                        if(distY > 0) {
-                            newY += ENEMY_SPEED;
-                        } else {
-                            newY -= ENEMY_SPEED;
-                        }
-                    }
-                    // Priorité 2: Se rapprocher horizontalement une fois aligné verticalement
-                    else if(abs(distX) > 10) {
-                        if(distX > 0) {
-                            newX += ENEMY_SPEED;
-                            enemies[i].facingRight = TRUE;
-                        } else {
-                            newX -= ENEMY_SPEED;
-                            enemies[i].facingRight = FALSE;
-                        }
-                    }
-                    
-                    // Vérifier les collisions avec les autres ennemis
-                    u8 collision = FALSE;
-                    for(u8 j = 0; j < MAX_ENEMIES; j++) {
-                        if(j != i && enemies[j].active && !enemies[j].dying) {
-                            s16 dx = newX - enemies[j].x;
-                            s16 dy = newY - enemies[j].y;
-                            // Collision si distance < 20 pixels
-                            if(abs(dx) < 20 && abs(dy) < 20) {
-                                collision = TRUE;
-                                break;
+                    // during charge, move faster
+                    if(enemies[i].attacking && enemies[i].aiTimer > 0) {
+                        enemies[i].aiTimer--;
+                        s16 step = enemies[i].speed * 2;
+                        if(distX > 0) enemies[i].x += step, enemies[i].facingRight = TRUE;
+                        else enemies[i].x -= step, enemies[i].facingRight = FALSE;
+                    } else {
+                        // slow approach when not charging
+                        if(abs(distX) < 200) {
+                            SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                            if(abs(distY) > 5) {
+                                enemies[i].y += (distY > 0) ? enemies[i].speed : -enemies[i].speed;
+                            } else if(abs(distX) > 10) {
+                                enemies[i].x += (distX > 0) ? enemies[i].speed : -enemies[i].speed;
+                                enemies[i].facingRight = (distX > 0);
                             }
                         }
                     }
-                    
-                    // Appliquer le déplacement seulement s'il n'y a pas de collision
-                    if(!collision) {
-                        enemies[i].x = newX;
-                        enemies[i].y = newY;
+                }
+                else if(enemies[i].type == ENEMY_TYPE_RANGE) {
+                    // Ranged: keep distance, retreat if too close
+                    s16 preferred = enemies[i].attackRange;
+                    if(abs(distX) < preferred - 20) {
+                        // too close: retreat horizontally
+                        enemies[i].x += (distX > 0) ? -enemies[i].speed : enemies[i].speed;
+                        SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                    } else if(abs(distX) > preferred + 10 && abs(distX) < 220) {
+                        // approach to get into range
+                        enemies[i].x += (distX > 0) ? enemies[i].speed : -enemies[i].speed;
+                        enemies[i].facingRight = (distX > 0);
+                        SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                    } else {
+                        // in optimal range: attack (no projectile implemented yet)
+                        enemies[i].attacking = TRUE;
+                        enemies[i].attackCooldown = 60;
+                        SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
                     }
                 }
                 else {
-                    // Idle
-                    if(!enemies[i].attacking) {
-                        SPR_setAnim(enemies[i].sprite, EANIM_IDLE);
+                    // Default melee soldier behavior
+                    // Attaque si très proche (même X et même Y)
+                    if(abs(distX) < ENEMY_ATTACK_RANGE && abs(distY) < 10) {
+                        if(!enemies[i].attacking) {
+                            enemies[i].attacking = TRUE;
+                            enemies[i].attackCooldown = 60; // Cooldown après attaque
+                            SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
+                        }
+                    }
+                    // Poursuivre le joueur
+                    else if(abs(distX) < 200 && !enemies[i].attacking) {
+                        SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                        
+                        s16 newX = enemies[i].x;
+                        s16 newY = enemies[i].y;
+                        
+                        // Priorité 1: Se mettre au même niveau Y que le joueur
+                        if(abs(distY) > 5) {
+                            if(distY > 0) {
+                                newY += ENEMY_SPEED;
+                            } else {
+                                newY -= ENEMY_SPEED;
+                            }
+                        }
+                        // Priorité 2: Se rapprocher horizontalement une fois aligné verticalement
+                        else if(abs(distX) > 10) {
+                            if(distX > 0) {
+                                newX += ENEMY_SPEED;
+                                enemies[i].facingRight = TRUE;
+                            } else {
+                                newX -= ENEMY_SPEED;
+                                enemies[i].facingRight = FALSE;
+                            }
+                        }
+
+                        // Vérifier les collisions avec les autres ennemis
+                        u8 collision = FALSE;
+                        for(u8 j = 0; j < MAX_ENEMIES; j++) {
+                            if(j != i && enemies[j].active && !enemies[j].dying) {
+                                s16 dx = newX - enemies[j].x;
+                                s16 dy = newY - enemies[j].y;
+                                // Collision si distance < 20 pixels
+                                if(abs(dx) < 20 && abs(dy) < 20) {
+                                    collision = TRUE;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Appliquer le déplacement seulement s'il n'y a pas de collision
+                        if(!collision) {
+                            enemies[i].x = newX;
+                            enemies[i].y = newY;
+                        }
+                    }
+                    else {
+                        // Idle
+                        if(!enemies[i].attacking) {
+                            SPR_setAnim(enemies[i].sprite, EANIM_IDLE);
+                        }
                     }
                 }
             }
@@ -1003,14 +1112,20 @@ void updateCamera() {
     }
 }
 
-void spawnEnemy(s16 x, s16 y) {
+void spawnEnemy(s16 x, s16 y, u8 type) {
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         if(!enemies[i].active) {
             enemies[i].active = TRUE;
+            enemies[i].type = type;
             enemies[i].x = x;
             enemies[i].y = y;
             enemies[i].velY = 0;
-            enemies[i].onGround = FALSE;
+            // Flying enemies should not be affected by gravity; others start on ground or in-air
+            if(type == ENEMY_TYPE_FLYING) {
+                enemies[i].onGround = FALSE; // treat as airborne but skip gravity
+            } else {
+                enemies[i].onGround = FALSE;
+            }
             enemies[i].facingRight = FALSE;
             enemies[i].attacking = FALSE;
             enemies[i].attackCooldown = 0;
@@ -1021,8 +1136,45 @@ void spawnEnemy(s16 x, s16 y) {
             enemies[i].hitboxOffsetY = 4;
             enemies[i].hitboxWidth = 24;
             enemies[i].hitboxHeight = 28;
-            enemies[i].hp = ENEMY_MAX_HP;
-            enemies[i].maxHp = ENEMY_MAX_HP;
+            // remember base Y and reset AI timer
+            enemies[i].baseY = y;
+            enemies[i].aiTimer = 0;
+            // Set per-type stats
+            if(type == ENEMY_TYPE_SOLDIER) {
+                // Soldier (melee)
+                enemies[i].speed = 1;
+                enemies[i].attackRange = 20;
+                enemies[i].hp = 60;
+                enemies[i].maxHp = 60;
+                enemies[i].damage = 10;
+            } else if(type == ENEMY_TYPE_RANGE) {
+                // Ranged
+                enemies[i].speed = 2;
+                enemies[i].attackRange = 100;
+                enemies[i].hp = 40;
+                enemies[i].maxHp = 40;
+                enemies[i].damage = 6;
+            } else if(type == ENEMY_TYPE_TANK) {
+                // Tank (melee heavy)
+                enemies[i].speed = 1;
+                enemies[i].attackRange = 25;
+                enemies[i].hp = 120;
+                enemies[i].maxHp = 120;
+                enemies[i].damage = 20;
+            } else if(type == ENEMY_TYPE_FLYING) {
+                // Flying (can move in Y freely)
+                enemies[i].speed = 2;
+                enemies[i].attackRange = 30;
+                enemies[i].hp = 40;
+                enemies[i].maxHp = 40;
+                enemies[i].damage = 8;
+            } else {
+                enemies[i].speed = ENEMY_SPEED;
+                enemies[i].attackRange = ENEMY_ATTACK_RANGE;
+                enemies[i].hp = ENEMY_MAX_HP;
+                enemies[i].maxHp = ENEMY_MAX_HP;
+                enemies[i].damage = ENEMY_DAMAGE;
+            }
             SPR_setAnim(enemies[i].sprite, EANIM_IDLE);
             break;
         }
