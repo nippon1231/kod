@@ -763,6 +763,7 @@ void updateEnemies() {
                         enemies[i].diveState = 2;
                         enemies[i].attackCooldown = 90;
                         enemies[i].attacking = FALSE;
+                        SPR_setAnim(enemies[i].sprite, EANIM_WALK);
                     }
                 }
                 else if(enemies[i].diveState == 2) {
@@ -773,12 +774,18 @@ void updateEnemies() {
                     else enemies[i].y = targetY;
 
                     s16 dx = enemies[i].baseX - enemies[i].x;
-                    if(abs(dx) > enemies[i].speed) enemies[i].x += (dx > 0) ? enemies[i].speed : -enemies[i].speed;
-                    else enemies[i].x = enemies[i].baseX;
+                    if(abs(dx) > enemies[i].speed) {
+                        enemies[i].x += (dx > 0) ? enemies[i].speed : -enemies[i].speed;
+                        enemies[i].facingRight = (dx > 0) ? TRUE : FALSE;
+                    } else {
+                        enemies[i].x = enemies[i].baseX;
+                    }
 
-                    SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                    // Face toward base while returning; switch to idle when done
+                    SPR_setHFlip(enemies[i].sprite, !enemies[i].facingRight);
                     if(abs(dy) <= 1 && abs(dx) <= 1) {
                         enemies[i].diveState = 0;
+                        SPR_setAnim(enemies[i].sprite, EANIM_IDLE);
                     }
                 }
                 else {
@@ -1265,6 +1272,8 @@ void spawnEnemy(s16 x, s16 y, u8 type) {
             const SpriteDefinition* def = level->enemySprite ? level->enemySprite : &sprite_soldier;
             if(type == ENEMY_TYPE_RANGE) {
                 def = &sprite_range1;
+            } else if(type == ENEMY_TYPE_FLYING) {
+                def = &sprite_flying1;
             }
             u16 eTileIndex = ensureGfxLoaded(def);
             if(enemies[i].sprite == NULL) {

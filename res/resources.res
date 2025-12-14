@@ -7,8 +7,8 @@ PALETTE palette_soldier "sprites/ennemy1.png"
 
 SPRITE sprite_range1 "sprites/enemy_renard.png" 6 7 BEST 10
 PALETTE palette_range1 "sprites/enemy_renard.png"
-SPRITE sprite_flying1 "sprites/enemy_flying1.png" 6 7 BEST 15
-PALETTE palette_flying1 "sprites/enemy_flying1.png"
+SPRITE sprite_flying1 "sprites/flying_1.png" 6 7 BEST 15
+PALETTE palette_flying1 "sprites/flying_1.png"
 
 TILESET bga_tileset "gfx/lvl1.png" BEST ALL
 MAP bga_map "gfx/lvl1.png" bga_tileset BEST   ALL
