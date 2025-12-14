@@ -86,6 +86,9 @@ typedef struct {
     // AI helpers
     s16 baseY;     // spawn Y for flying hover center
     s16 aiTimer;   // generic AI timer / phase
+    s16 baseX;     // spawn X for flying hover center
+    u8 diveState;  // 0=idle,1=diving,2=returning
+    u8 diveTimer;  // frames remaining for dive
 } Enemy;
 
 // Structure pour un niveau
@@ -441,18 +444,17 @@ void initGame() {
     }
     
     // Initialiser les ennemis
+    // Do not pre-create enemy sprites here. We'll create a sprite per enemy
+    // when spawning so different enemy types can use different sprite defs.
     Level* level = &levels[currentLevel];
-    u16 soldierTileIndex = 0;
-    const SpriteDefinition* enemyDef = level->enemySprite ? level->enemySprite : &sprite_soldier;
-    soldierTileIndex = ensureGfxLoaded(enemyDef);
     for(u8 i = 0; i < MAX_ENEMIES; i++) {
         enemies[i].active = FALSE;
-        if(enemies[i].sprite == NULL) {
-            enemies[i].sprite = SPR_addSprite(enemyDef, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, soldierTileIndex));
-        } else if(enemies[i].sprite) {
+        if(enemies[i].sprite) {
             SPR_setPosition(enemies[i].sprite, -32, -32);
+            SPR_setVisibility(enemies[i].sprite, HIDDEN);
+        } else {
+            enemies[i].sprite = NULL;
         }
-        if(enemies[i].sprite) SPR_setVisibility(enemies[i].sprite, HIDDEN);
     }
     
     // Spawner les ennemis du niveau actuel
@@ -736,7 +738,7 @@ void updateEnemies() {
                 continue;
             }
             
-            // Flying enemies: simple hover/move AI (no gravity)
+            // Flying enemies: hover, dive to player when in range, then return
             if(enemies[i].type == ENEMY_TYPE_FLYING) {
                 s16 fdistX = player.x - enemies[i].x;
                 s16 fdistY = player.y - enemies[i].y;
@@ -744,27 +746,70 @@ void updateEnemies() {
                 enemies[i].aiTimer++;
                 s16 phase = (enemies[i].aiTimer & 31) - 16; // -16..15
                 s16 hover = phase / 4; // -4..3 pixels
-                // try to maintain a horizontal distance while hovering
-                if(abs(fdistX) < enemies[i].attackRange && abs(fdistY) < 20) {
-                    if(!enemies[i].attacking) {
-                        enemies[i].attacking = TRUE;
-                        enemies[i].attackCooldown = 60;
+
+                // If currently in dive state
+                if(enemies[i].diveState == 1) {
+                    if(enemies[i].diveTimer > 0) {
+                        enemies[i].diveTimer--;
+                        // Fast dive toward player
+                        s16 sx = (fdistX > 0) ? enemies[i].speed * 3 : -enemies[i].speed * 3;
+                        enemies[i].x += sx;
+                        if(player.y > enemies[i].y) enemies[i].y += enemies[i].speed * 3;
+                        else enemies[i].y -= enemies[i].speed * 3;
+                        enemies[i].facingRight = (fdistX > 0);
                         SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
-                    }
-                } else if(!enemies[i].attacking) {
-                    // Move towards/strafe around player a bit
-                    s16 nx = enemies[i].x;
-                    s16 ny = enemies[i].baseY + hover;
-                    if(abs(fdistX) > 8) {
-                        nx += (fdistX > 0) ? enemies[i].speed : -enemies[i].speed;
-                        enemies[i].facingRight = (fdistX > 0) ? TRUE : FALSE;
                     } else {
-                        // small strafe motion
-                        nx += (enemies[i].aiTimer & 1) ? enemies[i].speed : -enemies[i].speed;
+                        // Dive finished: start returning phase
+                        enemies[i].diveState = 2;
+                        enemies[i].attackCooldown = 90;
+                        enemies[i].attacking = FALSE;
                     }
-                    enemies[i].x = nx;
-                    enemies[i].y = ny;
+                }
+                else if(enemies[i].diveState == 2) {
+                    // Return to base hover position
+                    s16 targetY = enemies[i].baseY + hover;
+                    s16 dy = targetY - enemies[i].y;
+                    if(abs(dy) > enemies[i].speed) enemies[i].y += (dy > 0) ? enemies[i].speed : -enemies[i].speed;
+                    else enemies[i].y = targetY;
+
+                    s16 dx = enemies[i].baseX - enemies[i].x;
+                    if(abs(dx) > enemies[i].speed) enemies[i].x += (dx > 0) ? enemies[i].speed : -enemies[i].speed;
+                    else enemies[i].x = enemies[i].baseX;
+
                     SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                    if(abs(dy) <= 1 && abs(dx) <= 1) {
+                        enemies[i].diveState = 0;
+                    }
+                }
+                else {
+                    // Idle hover / approach
+                    if(abs(fdistX) < enemies[i].attackRange && abs(fdistY) < 40) {
+                        // If player is below and roughly within range, start a dive
+                        if(player.y > enemies[i].y + 8 && abs(fdistX) < enemies[i].attackRange) {
+                            enemies[i].diveState = 1;
+                            enemies[i].diveTimer = 24; // frames for dive
+                            enemies[i].attacking = TRUE;
+                            SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
+                        } else if(!enemies[i].attacking) {
+                            enemies[i].attacking = TRUE;
+                            enemies[i].attackCooldown = 60;
+                            SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
+                        }
+                    } else if(!enemies[i].attacking) {
+                        // Move towards/strafe around player a bit while hovering
+                        s16 nx = enemies[i].x;
+                        s16 ny = enemies[i].baseY + hover;
+                        if(abs(fdistX) > 8) {
+                            nx += (fdistX > 0) ? enemies[i].speed : -enemies[i].speed;
+                            enemies[i].facingRight = (fdistX > 0) ? TRUE : FALSE;
+                        } else {
+                            // small strafe motion
+                            nx += (enemies[i].aiTimer & 1) ? enemies[i].speed : -enemies[i].speed;
+                        }
+                        enemies[i].x = nx;
+                        enemies[i].y = ny;
+                        SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                    }
                 }
                 // Flying enemies do not use gravity
             }
@@ -835,7 +880,8 @@ void updateEnemies() {
                     }
                 }
                 else if(enemies[i].type == ENEMY_TYPE_RANGE) {
-                    // Ranged: keep distance, retreat if too close
+                    // Ranged: keep distance, retreat if too close.
+                    // Align vertically with player before attacking.
                     s16 preferred = enemies[i].attackRange;
                     if(abs(distX) < preferred - 20) {
                         // too close: retreat horizontally
@@ -847,10 +893,20 @@ void updateEnemies() {
                         enemies[i].facingRight = (distX > 0);
                         SPR_setAnim(enemies[i].sprite, EANIM_WALK);
                     } else {
-                        // in optimal range: attack (no projectile implemented yet)
-                        enemies[i].attacking = TRUE;
-                        enemies[i].attackCooldown = 60;
-                        SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
+                        // In horizontal optimal range: first try to align vertically
+                        // before starting the attack.
+                        const s16 yAlignThreshold = 6;
+                        if(abs(distY) > yAlignThreshold) {
+                            // Move vertically toward the player
+                            if(distY > 0) enemies[i].y += enemies[i].speed;
+                            else enemies[i].y -= enemies[i].speed;
+                            SPR_setAnim(enemies[i].sprite, EANIM_WALK);
+                        } else {
+                            // Aligned vertically: perform attack
+                            enemies[i].attacking = TRUE;
+                            enemies[i].attackCooldown = 60;
+                            SPR_setAnim(enemies[i].sprite, EANIM_ATTACK);
+                        }
                     }
                 }
                 else {
@@ -1119,7 +1175,32 @@ void spawnEnemy(s16 x, s16 y, u8 type) {
             enemies[i].active = TRUE;
             enemies[i].type = type;
             enemies[i].x = x;
-            enemies[i].y = y;
+            // Place non-flying enemies on a walkable tile (tile value 1).
+            Level* level = &levels[currentLevel];
+            s16 spawnY = y;
+            if(type != ENEMY_TYPE_FLYING && level->collisionMap) {
+                // Determine tile X for this spawn X
+                s16 tileX = x / 8;
+                if(tileX < 0) tileX = 0;
+                if(tileX >= level->mapWidth) tileX = level->mapWidth - 1;
+
+                s16 foundY = -1;
+                for(s16 tileFeetY = 0; tileFeetY < level->mapHeight; tileFeetY++) {
+                    // Convert desired feet tile row back to sprite Y
+                    s16 candidateY = tileFeetY * 8 - 24 - level->bgaOffsetY;
+                    if(canMoveToPosition(x, candidateY)) {
+                        foundY = candidateY;
+                        break;
+                    }
+                }
+                if(foundY >= 0) spawnY = foundY;
+                else {
+                    // fallback: place near bottom of map
+                    spawnY = (level->mapHeight * 8) - 24 - level->bgaOffsetY;
+                    if(spawnY < 0) spawnY = 0;
+                }
+            }
+            enemies[i].y = spawnY;
             enemies[i].velY = 0;
             // Flying enemies should not be affected by gravity; others start on ground or in-air
             if(type == ENEMY_TYPE_FLYING) {
@@ -1137,8 +1218,11 @@ void spawnEnemy(s16 x, s16 y, u8 type) {
             enemies[i].hitboxOffsetY = 4;
             enemies[i].hitboxWidth = 24;
             enemies[i].hitboxHeight = 28;
-            // remember base Y and reset AI timer
-            enemies[i].baseY = y;
+            // remember base Y and reset AI timer (use actual spawn Y)
+            enemies[i].baseY = enemies[i].y;
+            enemies[i].baseX = enemies[i].x;
+            enemies[i].diveState = 0;
+            enemies[i].diveTimer = 0;
             enemies[i].aiTimer = 0;
             // Set per-type stats
             if(type == ENEMY_TYPE_SOLDIER) {
@@ -1165,7 +1249,7 @@ void spawnEnemy(s16 x, s16 y, u8 type) {
             } else if(type == ENEMY_TYPE_FLYING) {
                 // Flying (can move in Y freely)
                 enemies[i].speed = 2;
-                enemies[i].attackRange = 30;
+                enemies[i].attackRange = 60;
                 enemies[i].hp = 40;
                 enemies[i].maxHp = 40;
                 enemies[i].damage = 8;
@@ -1176,6 +1260,25 @@ void spawnEnemy(s16 x, s16 y, u8 type) {
                 enemies[i].maxHp = ENEMY_MAX_HP;
                 enemies[i].damage = ENEMY_DAMAGE;
             }
+            // Create or update the enemy sprite based on its type so ranged
+            // enemies can use a different sprite (sprite_range1).
+            const SpriteDefinition* def = level->enemySprite ? level->enemySprite : &sprite_soldier;
+            if(type == ENEMY_TYPE_RANGE) {
+                def = &sprite_range1;
+            }
+            u16 eTileIndex = ensureGfxLoaded(def);
+            if(enemies[i].sprite == NULL) {
+                enemies[i].sprite = SPR_addSprite(def, enemies[i].x - cameraX, enemies[i].y - cameraY, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, eTileIndex));
+            } else {
+                // Reposition existing sprite. If it uses a different gfx, that's
+                // acceptable for now; creating/destroying sprites at runtime can
+                // be platform-dependent.
+                SPR_setPosition(enemies[i].sprite, enemies[i].x - cameraX, enemies[i].y - cameraY);
+                SPR_setAnim(enemies[i].sprite, EANIM_IDLE);
+                SPR_setFrame(enemies[i].sprite, 0);
+                SPR_setVisibility(enemies[i].sprite, VISIBLE);
+            }
+            SPR_setVisibility(enemies[i].sprite, VISIBLE);
             SPR_setAnim(enemies[i].sprite, EANIM_IDLE);
             break;
         }
