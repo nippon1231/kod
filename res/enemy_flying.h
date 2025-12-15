@@ -1,0 +1,11 @@
+#include <genesis.h>
+
+#ifndef _RES_ENEMY_FLYING_H_
+#define _RES_ENEMY_FLYING_H_    
+
+#define FLYING_ENEMY_ANIM_IDLE_MOVE  0
+#define FLYING_ENEMY_DIVE 1
+#define FLYING_ENEMY_ANIM_DEATH 3
+#define FLYING_ENEMY_ANIM_HURT 2
+
+#endif // _RES_ENEMY_FLYING_H_

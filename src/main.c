@@ -188,8 +188,8 @@ int main() {
     SPR_init();
     
     // Charger les palettes
-    PAL_setPalette(PAL1, palette_player.data, CPU);
-    PAL_setPalette(PAL2, palette_soldier.data, CPU);
+    PAL_setPalette(PAL2, palette_player.data, CPU);
+    PAL_setPalette(PAL3, palette_soldier.data, CPU);
     
     // Définir la couleur de fond (backdrop) en bleu
     VDP_setBackgroundColor(16); // Index 16 de la palette (bleu dans la palette par défaut)
@@ -225,7 +225,7 @@ void initLevels() {
     levels[0].bgaPalette = &palette_lvl;
     levels[0].bgbPalette = &palette_lvlbg;
     levels[0].enemySprite = &sprite_soldier;
-    levels[0].enemyPalette = &palette_soldier;
+    levels[0].enemyPalette = &palette_lvlbg;
     levels[0].collisionMap = levelMap;  // Map de collision du niveau 1
     levels[0].mapWidth = 191;
     levels[0].mapHeight = 20;
@@ -346,11 +346,9 @@ u16 loadLevel(u8 levelIndex,u16 index) {
         PAL_setPalette(PAL0, level->bgaPalette->data, CPU);
     }
     if(level->bgbPalette) {
-        PAL_setPalette(PAL3, level->bgbPalette->data, CPU);
+        PAL_setPalette(PAL1, level->bgbPalette->data, CPU);
     }
-    if(level->enemyPalette) {
-        PAL_setPalette(PAL2, level->enemyPalette->data, CPU);
-    }
+
 
     // Ensure tilesets are loaded once and get their VRAM indices (guarded)
     if(level->bgaTileset && level->bga) {
@@ -362,7 +360,7 @@ u16 loadLevel(u8 levelIndex,u16 index) {
 
     if(level->bgbTileset && level->bgb) {
         u16 bgbTileIndex = ensureTilesetLoaded(level->bgbTileset);
-        bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, bgbTileIndex));
+        bgbMap = MAP_create(level->bgb, BG_B, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, bgbTileIndex));
     } else {
         bgbMap = NULL;
     }
@@ -409,7 +407,7 @@ void initGame() {
     // Ensure player gfx is loaded once and get its VRAM index
     u16 playerTileIndex = ensureGfxLoaded(&sprite_player);
     if(player.sprite == NULL) {
-        player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, playerTileIndex));
+        player.sprite = SPR_addSprite(&sprite_player, 80, 70, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, playerTileIndex));
     } else {
         SPR_setPosition(player.sprite, 80, 70);
     }
@@ -433,7 +431,7 @@ void initGame() {
     u16 bulletTileIndex = ensureGfxLoaded(&sprite_player_bullet);
     for(u8 i = 0; i < MAX_BULLETS; i++) {
         if(bullets[i].sprite == NULL) {
-            bullets[i].sprite = SPR_addSprite(&sprite_player_bullet, -32, -32, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, bulletTileIndex));
+            bullets[i].sprite = SPR_addSprite(&sprite_player_bullet, -32, -32, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, bulletTileIndex));
         } else {
             SPR_setPosition(bullets[i].sprite, -32, -32);
         }
@@ -1277,7 +1275,7 @@ void spawnEnemy(s16 x, s16 y, u8 type) {
             }
             u16 eTileIndex = ensureGfxLoaded(def);
             if(enemies[i].sprite == NULL) {
-                enemies[i].sprite = SPR_addSprite(def, enemies[i].x - cameraX, enemies[i].y - cameraY, TILE_ATTR_FULL(PAL2, FALSE, FALSE, FALSE, eTileIndex));
+                enemies[i].sprite = SPR_addSprite(def, enemies[i].x - cameraX, enemies[i].y - cameraY, TILE_ATTR_FULL(PAL3, FALSE, FALSE, FALSE, eTileIndex));
             } else {
                 // Reposition existing sprite. If it uses a different gfx, that's
                 // acceptable for now; creating/destroying sprites at runtime can
