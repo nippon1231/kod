@@ -225,7 +225,7 @@ void initLevels() {
     levels[0].bgaPalette = &palette_lvl;
     levels[0].bgbPalette = &palette_lvlbg;
     levels[0].enemySprite = &sprite_soldier;
-    levels[0].enemyPalette = &palette_lvlbg;
+    levels[0].enemyPalette = &palette_soldier;
     levels[0].collisionMap = levelMap;  // Map de collision du niveau 1
     levels[0].mapWidth = 191;
     levels[0].mapHeight = 20;
@@ -271,7 +271,7 @@ void initLevels() {
     levels[1].bgbPalette = &lvl2bgb_pal ;
     levels[1].bgaMaxOffsetY = 0; // Allow more vertical scroll for BG_A
     levels[1].enemySprite = &sprite_range1;
-    levels[1].enemyPalette = &palette_range1;
+    levels[1].enemyPalette = &palette_soldier;
     levels[1].collisionMap = levelMap2;  // Map de collision du niveau 3
     levels[1].mapWidth = LVL2_MAP_WIDTH;
     levels[1].mapHeight = LVL2_MAP_HEIGHT;
